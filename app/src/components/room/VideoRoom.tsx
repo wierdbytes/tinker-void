@@ -9,11 +9,13 @@ import {
   useTracks,
   useRoomContext,
 } from '@livekit/components-react'
-import { Track, RoomEvent } from 'livekit-client'
+import { Track, RoomEvent, RoomOptions } from 'livekit-client'
 import '@livekit/components-styles'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Mic, MicOff, PhoneOff, Users, Copy, Check } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { InCallAudioSettings } from '@/components/audio/InCallAudioSettings'
+import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface VideoRoomProps {
@@ -22,9 +24,28 @@ interface VideoRoomProps {
   roomId: string
   participantName: string
   onLeave: () => void
+  audioInputDeviceId?: string
+  audioOutputDeviceId?: string
 }
 
-export function VideoRoom({ token, serverUrl, roomId, participantName, onLeave }: VideoRoomProps) {
+export function VideoRoom({
+  token,
+  serverUrl,
+  roomId,
+  participantName,
+  onLeave,
+  audioInputDeviceId,
+  audioOutputDeviceId,
+}: VideoRoomProps) {
+  const roomOptions: RoomOptions = {
+    audioCaptureDefaults: {
+      deviceId: audioInputDeviceId || undefined,
+    },
+    audioOutput: {
+      deviceId: audioOutputDeviceId || undefined,
+    },
+  }
+
   return (
     <LiveKitRoom
       token={token}
@@ -33,6 +54,7 @@ export function VideoRoom({ token, serverUrl, roomId, participantName, onLeave }
       audio={true}
       video={false}
       onDisconnected={onLeave}
+      options={roomOptions}
       className="h-full"
     >
       <RoomContent roomId={roomId} participantName={participantName} onLeave={onLeave} />
@@ -118,6 +140,21 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
         >
           {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </Button>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="rounded-full w-14 h-14"
+            >
+              <Settings className="w-6 h-6" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 bg-gray-800 border-gray-600">
+            <InCallAudioSettings />
+          </PopoverContent>
+        </Popover>
 
         <Button
           variant="destructive"

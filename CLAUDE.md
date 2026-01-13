@@ -2,12 +2,12 @@
 
 ## Описание проекта
 
-TinkerDesk — веб-приложение для голосовых встреч команды (аналог Zoom) с функциями:
+TinkerDesk — веб-приложение для голосовых встреч команды с функциями:
 - Голосовая связь через LiveKit (self-hosted)
-- Запись каждого участника отдельно
-- Транскрибация речи в текст (Parakeet/NVIDIA NeMo)
+- Автоматическая запись каждого участника отдельно (LiveKit Egress → MinIO)
+- Транскрибация речи в текст (Parakeet V3 на CPU)
 - Суммаризация встреч (Claude API)
-- Диалог с именами участников
+- Диалог с именами участников и временными метками
 
 ## Технологический стек
 
@@ -15,10 +15,41 @@ TinkerDesk — веб-приложение для голосовых встре�
 - **Backend:** Next.js API Routes
 - **База данных:** PostgreSQL + Prisma ORM
 - **Голосовая связь:** LiveKit (self-hosted, v1.9.8)
-- **Транскрибация:** Parakeet V3 (Rust/ONNX, работает на CPU включая Apple M1)
+- **Запись:** LiveKit Egress → MinIO (S3)
+- **Транскрибация:** Parakeet V3 (Rust/ONNX, работает на CPU)
 - **Суммаризация:** Claude API (Anthropic)
 - **Хранение файлов:** MinIO (S3-совместимое)
 - **Контейнеризация:** Docker Compose
+
+## Архитектура записи и транскрибации
+
+```
+Участник включает микрофон
+         ↓
+LiveKit: track_published webhook
+         ↓
+Next.js: startTrackRecording() → LiveKit Egress API
+         ↓
+Egress записывает аудио в MinIO (OGG формат)
+         ↓
+Участник выходит / комната закрывается
+         ↓
+LiveKit: egress_ended webhook
+         ↓
+Next.js: сохраняет Recording в БД
+         ↓
+LiveKit: room_finished webhook
+         ↓
+Next.js: POST /api/transcribe
+         ↓
+Transcriber: скачивает OGG из MinIO, конвертирует в WAV (ffmpeg), транскрибирует
+         ↓
+Next.js: сохраняет Utterances в БД
+         ↓
+Next.js: POST /api/summarize → Claude API
+         ↓
+Meeting status: COMPLETED
+```
 
 ## Структура проекта
 
@@ -30,31 +61,31 @@ tinkerdesk/
 │   │   │   ├── page.tsx          # Главная (лобби)
 │   │   │   ├── room/[roomId]/    # Страница комнаты
 │   │   │   ├── meetings/         # История встреч
-│   │   │   └── api/              # API endpoints
+│   │   │   └── api/
+│   │   │       ├── livekit/
+│   │   │       │   ├── token/    # Генерация токенов
+│   │   │       │   └── webhook/  # Обработка событий LiveKit
+│   │   │       ├── transcribe/   # Запуск транскрибации
+│   │   │       └── summarize/    # Суммаризация через Claude
 │   │   ├── components/           # React компоненты
-│   │   │   ├── room/             # Компоненты комнаты
-│   │   │   └── ui/               # shadcn/ui
-│   │   └── lib/                  # Утилиты и клиенты
+│   │   └── lib/
+│   │       ├── livekit.ts        # LiveKit клиент и startTrackRecording()
+│   │       ├── claude.ts         # Claude API клиент
+│   │       └── prisma.ts         # Prisma клиент
 │   ├── prisma/schema.prisma      # Схема БД
 │   └── .env.local                # Переменные окружения
 ├── services/
-│   ├── livekit/                  # Конфигурация LiveKit
-│   │   ├── livekit.yaml
-│   │   └── egress.yaml
-│   ├── transcriber/              # [Legacy] Python/FastAPI (требует GPU)
-│   └── transcriber-rs/           # Сервис транскрибации (Rust/ONNX)
-│       ├── Cargo.toml
+│   ├── livekit/
+│   │   ├── livekit.yaml          # Конфигурация LiveKit сервера
+│   │   └── egress.yaml           # Конфигурация Egress
+│   └── transcriber-rs/           # Сервис транскрибации (Rust)
 │       ├── Dockerfile
 │       └── src/
 │           ├── main.rs           # Axum HTTP сервер
-│           ├── config.rs         # Конфигурация
-│           ├── transcriber.rs    # Интеграция parakeet-rs
+│           ├── transcriber.rs    # Parakeet + ffmpeg конвертация
 │           ├── handlers.rs       # HTTP handlers
-│           ├── storage.rs        # MinIO клиент
-│           └── queue.rs          # Redis очередь
-├── docker-compose.yml            # Оркестрация сервисов
-├── scripts/setup.sh              # Скрипт настройки
-└── PLAN.md                       # Детальный план проекта
+│           └── storage.rs        # MinIO клиент
+└── docker-compose.yml
 ```
 
 ## Команды
@@ -64,17 +95,27 @@ tinkerdesk/
 ./scripts/setup.sh
 ```
 
-### Запуск инфраструктуры (Docker)
+### Запуск всех сервисов
 ```bash
-docker compose up -d postgres redis minio minio-setup livekit livekit-egress
-```
+# Инфраструктура
+docker compose up -d postgres redis minio livekit livekit-egress transcriber
 
-### Запуск Next.js dev-сервера
-```bash
+# Сделать бакет recordings публичным (обязательно!)
+docker compose exec minio mc alias set local http://localhost:9000 minioadmin minioadmin123
+docker compose exec minio mc mb local/recordings --ignore-existing
+docker compose exec minio mc anonymous set download local/recordings
+
+# Next.js
 cd app && npm run dev
 ```
 
-### Prisma команды
+### Пересборка транскрибатора (после изменений)
+```bash
+docker compose build transcriber
+docker compose up -d transcriber
+```
+
+### Prisma
 ```bash
 cd app
 npm run db:generate    # Генерация клиента
@@ -82,55 +123,80 @@ npm run db:push        # Применение схемы
 npm run db:studio      # GUI для БД
 ```
 
-### Логи Docker
+### Логи
 ```bash
-docker compose logs -f livekit
-docker compose logs -f postgres
-```
-
-### Перезапуск LiveKit
-```bash
-docker compose restart livekit
+docker compose logs -f livekit          # LiveKit сервер
+docker compose logs -f livekit-egress   # Egress (запись)
+docker compose logs -f transcriber      # Транскрибация
 ```
 
 ## Переменные окружения
 
 Файл `app/.env.local`:
 ```env
+# Public
 NEXT_PUBLIC_LIVEKIT_URL=ws://localhost:7880
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Database
 DATABASE_URL=postgresql://tinkerdesk:tinkerdesk_secret@localhost:5432/tinkerdesk
+
+# LiveKit
 LIVEKIT_API_KEY=devkey
 LIVEKIT_API_SECRET=secret123456789012345678901234567890
-ANTHROPIC_API_KEY=<требуется добавить>
+
+# MinIO (для хоста)
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin123
+MINIO_BUCKET=recordings
+
+# Transcriber
+TRANSCRIBER_URL=http://localhost:8001
+
+# Claude API (ОБЯЗАТЕЛЬНО для суммаризации)
+ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-## Известные проблемы
+## Важные детали реализации
 
-### 1. RED кодек в Chrome (критично)
-**Проблема:** LiveKit v1.9.8 падает с panic при подключении второго участника из Chrome из-за бага с RED аудио кодеком.
+### 1. Запуск записи при track_published
+Файл: `app/src/app/api/livekit/webhook/route.ts`
 
-**Решение:** Отключить RED кодек в `VideoRoom.tsx`:
+При событии `track_published` проверяется тип трека (может быть `0` или `'AUDIO'`) и запускается запись:
 ```typescript
-const room = new Room({
-  audioCaptureDefaults: { red: false },
-})
+const isAudio = track.type === 0 || track.type === 'AUDIO'
+if (isAudio) {
+  await startTrackRecording(roomName, trackSid, participantIdentity)
+}
 ```
 
-### 2. Webhook URL для локальной разработки
-**Проблема:** LiveKit контейнер не может достучаться до `http://app:3000`.
+### 2. Конвертация OGG → WAV
+Файл: `services/transcriber-rs/src/transcriber.rs`
 
-**Решение:** В `services/livekit/livekit.yaml` используется:
-```yaml
-webhook:
-  urls:
-    - http://host.docker.internal:3000/api/livekit/webhook
+LiveKit Egress записывает в OGG (Opus), но Parakeet требует WAV. Транскрибатор автоматически конвертирует через ffmpeg:
+```rust
+Command::new("ffmpeg")
+    .args(["-i", input, "-ar", "16000", "-ac", "1", "-f", "wav", output])
 ```
 
-### 3. Prisma не находит DATABASE_URL
-**Проблема:** Prisma читает `.env`, а не `.env.local`.
+### 3. Duration как BigInt
+Файл: `app/src/app/api/livekit/webhook/route.ts`
 
-**Решение:** Скрипт `setup.sh` создаёт `app/.env` из `app/.env.local`.
+LiveKit возвращает `duration` как BigInt в наносекундах. Конвертация в секунды:
+```typescript
+const durationSec = Number(durationNs) / 1_000_000_000
+```
+
+### 4. S3 Upload для Egress
+Файл: `app/src/lib/livekit.ts`
+
+Egress работает внутри Docker, поэтому endpoint MinIO: `http://minio:9000`
+
+### 5. Транскрибатор получает относительный путь
+Файл: `app/src/app/api/transcribe/route.ts`
+
+Транскрибатор имеет собственное подключение к MinIO, поэтому ему отправляется только `recording.fileUrl` (относительный путь), а не полный URL.
 
 ## API Endpoints
 
@@ -142,15 +208,15 @@ webhook:
 | `/api/meetings` | GET | Список встреч |
 | `/api/meetings/[id]` | GET | Детали встречи |
 | `/api/transcribe` | POST | Запуск транскрибации |
-| `/api/summarize` | POST | Запуск суммаризации |
+| `/api/summarize` | POST | Суммаризация через Claude |
 
 ## Схема базы данных
 
 - **Room** — комнаты для встреч
-- **Meeting** — встречи (статус: IN_PROGRESS, PROCESSING, COMPLETED, FAILED)
-- **Participant** — участники встречи
-- **Utterance** — фразы транскрипта с временными метками
-- **Recording** — записи аудио участников
+- **Meeting** — встречи (статус: IN_PROGRESS → PROCESSING → COMPLETED/FAILED)
+- **Participant** — участники встречи (identity, name, joinedAt, leftAt)
+- **Recording** — записи аудио (fileUrl, duration, transcribed)
+- **Utterance** — фразы транскрипта (text, startTime, endTime)
 
 ## Порты
 
@@ -162,38 +228,44 @@ webhook:
 | 7880 | LiveKit HTTP/WebSocket |
 | 7881 | LiveKit RTC (TCP) |
 | 7882 | LiveKit RTC (UDP) |
-| 8001 | Transcriber (Parakeet) |
+| 8001 | Transcriber |
 | 9000 | MinIO API |
 | 9001 | MinIO Console |
 
-## Рекомендации
+## Известные проблемы
 
-1. Запустить `npm audit fix` в `app/` для устранения уязвимостей
-2. Обновить Next.js при возможности (предупреждение безопасности в 14.2.21)
+### RED кодек в Chrome
+LiveKit v1.9.8 может падать с panic при втором участнике из Chrome из-за RED кодека.
+
+**Решение** в `VideoRoom.tsx`:
+```typescript
+const room = new Room({
+  audioCaptureDefaults: { red: false },
+})
+```
+
+### Webhook на Linux
+`host.docker.internal` не работает на Linux. Нужно использовать IP хоста или настроить network.
 
 ## Сервис транскрибации (transcriber-rs)
 
-**Технологии:** Rust + parakeet-rs + ONNX Runtime
-**Модель:** Parakeet TDT 0.6B V3 INT8 (25 европейских языков, включая русский)
-**Источник модели:** https://blob.handy.computer/parakeet-v3-int8.tar.gz
+**Технологии:** Rust + parakeet-rs + ONNX Runtime + ffmpeg
+**Модель:** Parakeet TDT 0.6B V3 INT8 (25 языков, включая русский)
+**Формат:** Принимает любой аудиоформат (конвертирует в WAV 16kHz mono)
 
-### Преимущества новой реализации
-- Работает на CPU (включая Apple M1/M2/M3)
-- Не требует NVIDIA GPU
-- Docker образ ~800MB (вместо ~15GB с NeMo)
-- Производительность ~20-30x realtime на Apple Silicon
+### Особенности
+- Работает на CPU (включая Apple Silicon)
+- Docker образ ~1GB
+- Производительность ~20-30x realtime
 
-### API транскрибатора
+### API
 
 | Endpoint | Метод | Описание |
 |----------|-------|----------|
-| `/health` | GET | Статус сервиса и загрузки модели |
-| `/transcribe` | POST | Транскрибация одного файла |
-| `/transcribe/batch` | POST | Пакетная транскрибация |
-| `/job/{job_id}` | GET | Статус batch job |
+| `/health` | GET | `{"status": "healthy", "model_loaded": true}` |
+| `/transcribe` | POST | `{file_url, recording_id}` → `{text, segments, duration}` |
 
-### Запуск
+### Проверка работоспособности
 ```bash
-docker compose up transcriber -d
 curl http://localhost:8001/health
 ```

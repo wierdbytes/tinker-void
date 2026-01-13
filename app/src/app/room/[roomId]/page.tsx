@@ -1,13 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { VideoRoom } from '@/components/room/VideoRoom'
+import { PreJoinAudioSetup } from '@/components/audio/PreJoinAudioSetup'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
+
+interface AudioDevices {
+  audioInputDeviceId: string
+  audioOutputDeviceId: string
+}
 
 export default function RoomPage() {
   const params = useParams()
@@ -20,6 +26,14 @@ export default function RoomPage() {
   const [userName, setUserName] = useState(nameFromUrl || '')
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [audioDevices, setAudioDevices] = useState<AudioDevices>({
+    audioInputDeviceId: '',
+    audioOutputDeviceId: '',
+  })
+
+  const handleDevicesSelected = useCallback((devices: AudioDevices) => {
+    setAudioDevices(devices)
+  }, [])
 
   // Auto-join if name is provided in URL
   useEffect(() => {
@@ -86,6 +100,8 @@ export default function RoomPage() {
               />
             </div>
 
+            <PreJoinAudioSetup onDevicesSelected={handleDevicesSelected} />
+
             {error && (
               <p className="text-sm text-red-500">{error}</p>
             )}
@@ -119,6 +135,8 @@ export default function RoomPage() {
         roomId={roomId}
         participantName={userName}
         onLeave={handleLeave}
+        audioInputDeviceId={audioDevices.audioInputDeviceId}
+        audioOutputDeviceId={audioDevices.audioOutputDeviceId}
       />
     </div>
   )
