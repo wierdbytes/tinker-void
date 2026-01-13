@@ -1,0 +1,27 @@
+# LiveKit Egress Configuration
+api_key: devkey
+api_secret: secret123456789012345678901234567890
+ws_url: ws://livekit:7880
+
+# Health check port
+health_port: 9090
+
+# Redis for job queue
+redis:
+  address: redis:6379
+
+# S3 storage (MinIO)
+s3:
+  access_key: minioadmin
+  secret: minioadmin123
+  region: us-east-1
+  endpoint: http://minio:9000
+  bucket: recordings
+  force_path_style: true
+
+# Logging
+log_level: info
+
+# Template for recording paths
+# Recordings will be stored as: recordings/{room_name}/{track_id}_{participant_identity}.ogg
+file_prefix: recordings

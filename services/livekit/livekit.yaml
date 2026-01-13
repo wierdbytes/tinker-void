@@ -1,0 +1,35 @@
+# LiveKit Server Configuration
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  use_external_ip: false
+
+# API keys
+keys:
+  devkey: secret123456789012345678901234567890
+
+# Redis configuration
+redis:
+  address: redis:6379
+
+# Webhook configuration
+webhook:
+  urls:
+    - http://host.docker.internal:3000/api/livekit/webhook
+  api_key: devkey
+
+# Room configuration
+room:
+  # Auto-create rooms
+  auto_create: true
+  # Empty room timeout (in seconds)
+  empty_timeout: 300
+  # Max participants per room
+  max_participants: 50
+
+# Logging
+logging:
+  level: info
+  json: false
