@@ -23,7 +23,6 @@ model Meeting {
   startedAt    DateTime      @default(now())
   endedAt      DateTime?
   status       MeetingStatus @default(IN_PROGRESS)
-  summary      String?       @db.Text
   participants Participant[]
   utterances   Utterance[]
   recordings   Recording[]

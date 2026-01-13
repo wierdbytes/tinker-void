@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowLeft, Calendar, Users, Clock, FileText, MessageSquare, Loader2 } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, Clock, Loader2 } from 'lucide-react'
 
 interface Participant {
   id: string
@@ -86,7 +85,6 @@ interface Meeting {
   startedAt: string
   endedAt: string | null
   status: string
-  summary: string | null
   room: {
     name: string
   }
@@ -186,16 +184,6 @@ export default function MeetingDetailPage() {
     )
   }
 
-  // Parse summary to separate summary and transcript
-  let summaryPart = meeting.summary || ''
-  let transcriptPart = ''
-
-  if (meeting.summary?.includes('## Полный транскрипт')) {
-    const parts = meeting.summary.split('## Полный транскрипт')
-    summaryPart = parts[0].replace('---', '').trim()
-    transcriptPart = parts[1]?.trim() || ''
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto py-8 px-4 max-w-5xl">
@@ -236,108 +224,44 @@ export default function MeetingDetailPage() {
           </div>
         </div>
 
-        {/* Content */}
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="summary" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Резюме
-            </TabsTrigger>
-            <TabsTrigger value="transcript" className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              Транскрипт
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="summary">
-            <Card>
-              <CardHeader>
-                <CardTitle>Резюме встречи</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {summaryPart ? (
-                  <div className="prose dark:prose-invert max-w-none">
-                    {summaryPart.split('\n').map((line, i) => {
-                      if (line.startsWith('## ')) {
-                        return (
-                          <h2 key={i} className="text-xl font-semibold mt-6 mb-3">
-                            {line.replace('## ', '')}
-                          </h2>
-                        )
-                      }
-                      if (line.startsWith('- ')) {
-                        return (
-                          <li key={i} className="ml-4">
-                            {line.replace('- ', '')}
-                          </li>
-                        )
-                      }
-                      if (line.trim()) {
-                        return (
-                          <p key={i} className="mb-2">
-                            {line}
-                          </p>
-                        )
-                      }
-                      return null
-                    })}
-                  </div>
-                ) : meeting.status === 'PROCESSING' ? (
-                  <div className="flex items-center gap-2 text-gray-500">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Резюме формируется...</span>
-                  </div>
-                ) : (
-                  <p className="text-gray-500">Резюме недоступно</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="transcript">
-            <Card>
-              <CardHeader>
-                <CardTitle>Полный транскрипт</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {meeting.utterances.length > 0 ? (
-                  <ScrollArea className="h-[600px] pr-4">
-                    <div className="space-y-4">
-                      {groupUtterances(meeting.utterances).map((utterance) => (
-                        <div key={utterance.id} className="flex gap-4">
-                          <div className="text-xs text-gray-400 font-mono w-12 flex-shrink-0 pt-1">
-                            {formatTime(utterance.startTime)}
-                          </div>
-                          <div className="flex-1">
-                            <div
-                              className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-1 ${
-                                participantColors[utterance.participant.id]
-                              }`}
-                            >
-                              {utterance.participant.name}
-                            </div>
-                            <p className="text-gray-800 dark:text-gray-200">{utterance.text}</p>
-                          </div>
+        {/* Transcript */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Транскрипт</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {meeting.utterances.length > 0 ? (
+              <ScrollArea className="h-[600px] pr-4">
+                <div className="space-y-4">
+                  {groupUtterances(meeting.utterances).map((utterance) => (
+                    <div key={utterance.id} className="flex gap-4">
+                      <div className="text-xs text-gray-400 font-mono w-12 flex-shrink-0 pt-1">
+                        {formatTime(utterance.startTime)}
+                      </div>
+                      <div className="flex-1">
+                        <div
+                          className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-1 ${
+                            participantColors[utterance.participant.id]
+                          }`}
+                        >
+                          {utterance.participant.name}
                         </div>
-                      ))}
+                        <p className="text-gray-800 dark:text-gray-200">{utterance.text}</p>
+                      </div>
                     </div>
-                  </ScrollArea>
-                ) : transcriptPart ? (
-                  <ScrollArea className="h-[600px] pr-4">
-                    <pre className="whitespace-pre-wrap text-sm">{transcriptPart}</pre>
-                  </ScrollArea>
-                ) : meeting.status === 'PROCESSING' ? (
-                  <div className="flex items-center gap-2 text-gray-500">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Транскрипт формируется...</span>
-                  </div>
-                ) : (
-                  <p className="text-gray-500">Транскрипт недоступен</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : meeting.status === 'PROCESSING' ? (
+              <div className="flex items-center gap-2 text-gray-500">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Транскрипт формируется...</span>
+              </div>
+            ) : (
+              <p className="text-gray-500">Транскрипт недоступен</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

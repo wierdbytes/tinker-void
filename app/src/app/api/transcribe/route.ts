@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 const TRANSCRIBER_URL = process.env.TRANSCRIBER_URL || 'http://localhost:8001'
-// MinIO endpoint for transcriber (inside Docker network)
-const MINIO_INTERNAL_URL = process.env.MINIO_INTERNAL_URL || 'http://minio:9000'
-const MINIO_BUCKET = process.env.MINIO_BUCKET || 'recordings'
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,8 +28,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (meeting.recordings.length === 0) {
-      // No recordings to transcribe, go straight to summarization
-      await triggerSummarization(meetingId)
+      // No recordings to transcribe, mark as completed
+      await prisma.meeting.update({
+        where: { id: meetingId },
+        data: { status: 'COMPLETED' },
+      })
       return NextResponse.json({ message: 'No recordings to transcribe' })
     }
 
@@ -98,8 +98,11 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.all(transcriptionPromises)
 
-    // Trigger summarization after all transcriptions complete
-    await triggerSummarization(meetingId)
+    // Mark meeting as completed
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: { status: 'COMPLETED' },
+    })
 
     return NextResponse.json({
       message: 'Transcription completed',
@@ -108,20 +111,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Transcription error:', error)
     return NextResponse.json({ error: 'Transcription failed' }, { status: 500 })
-  }
-}
-
-async function triggerSummarization(meetingId: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
-  try {
-    await fetch(`${baseUrl}/api/summarize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ meetingId }),
-    })
-  } catch (error) {
-    console.error('Failed to trigger summarization:', error)
   }
 }
 
@@ -182,8 +171,11 @@ export async function PUT(request: NextRequest) {
     })
 
     if (pendingRecordings === 0) {
-      // All done, trigger summarization
-      await triggerSummarization(recording.meetingId)
+      // All done, mark meeting as completed
+      await prisma.meeting.update({
+        where: { id: recording.meetingId },
+        data: { status: 'COMPLETED' },
+      })
     }
 
     return NextResponse.json({ success: true })
