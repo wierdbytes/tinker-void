@@ -1,13 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { AudioSettings } from '@/components/audio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Video, Users, History } from 'lucide-react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Video, Users, History, Settings, ChevronDown } from 'lucide-react'
+
+interface AudioDevices {
+  audioInputDeviceId: string
+  audioOutputDeviceId: string
+}
 
 export default function HomePage() {
   const router = useRouter()
@@ -15,6 +22,14 @@ export default function HomePage() {
   const [userName, setUserName] = useState('')
   const [roomId, setRoomId] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [audioDevices, setAudioDevices] = useState<AudioDevices>({
+    audioInputDeviceId: '',
+    audioOutputDeviceId: '',
+  })
+
+  const handleDevicesChange = useCallback((devices: AudioDevices) => {
+    setAudioDevices(devices)
+  }, [])
 
   const createRoom = async () => {
     if (!roomName.trim() || !userName.trim()) return
@@ -89,6 +104,20 @@ export default function HomePage() {
                     onChange={(e) => setRoomName(e.target.value)}
                   />
                 </div>
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between px-4 py-2 h-auto">
+                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Settings className="w-4 h-4" />
+                        Настройки аудио
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <AudioSettings onDevicesChange={handleDevicesChange} className="mt-2" />
+                  </CollapsibleContent>
+                </Collapsible>
                 <Button
                   className="w-full"
                   onClick={createRoom}
@@ -118,6 +147,20 @@ export default function HomePage() {
                     onChange={(e) => setRoomId(e.target.value)}
                   />
                 </div>
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between px-4 py-2 h-auto">
+                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Settings className="w-4 h-4" />
+                        Настройки аудио
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <AudioSettings onDevicesChange={handleDevicesChange} className="mt-2" />
+                  </CollapsibleContent>
+                </Collapsible>
                 <Button
                   className="w-full"
                   onClick={joinRoom}

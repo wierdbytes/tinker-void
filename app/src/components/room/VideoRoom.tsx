@@ -14,7 +14,7 @@ import '@livekit/components-styles'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { InCallAudioSettings } from '@/components/audio/InCallAudioSettings'
+import { AudioSettings } from '@/components/audio'
 import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -152,7 +152,7 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-80 bg-gray-800 border-gray-600">
-            <InCallAudioSettings />
+            <AudioSettings room={room} compact />
           </PopoverContent>
         </Popover>
 

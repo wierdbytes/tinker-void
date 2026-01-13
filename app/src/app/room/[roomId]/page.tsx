@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { VideoRoom } from '@/components/room/VideoRoom'
-import { PreJoinAudioSetup } from '@/components/audio/PreJoinAudioSetup'
+import { AudioSettings } from '@/components/audio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2 } from 'lucide-react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Loader2, Settings, ChevronDown } from 'lucide-react'
 
 interface AudioDevices {
   audioInputDeviceId: string
@@ -100,7 +101,20 @@ export default function RoomPage() {
               />
             </div>
 
-            <PreJoinAudioSetup onDevicesSelected={handleDevicesSelected} />
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between px-4 py-2 h-auto">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Settings className="w-4 h-4" />
+                    Настройки аудио
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <AudioSettings onDevicesChange={handleDevicesSelected} className="mt-2" />
+              </CollapsibleContent>
+            </Collapsible>
 
             {error && (
               <p className="text-sm text-red-500">{error}</p>
