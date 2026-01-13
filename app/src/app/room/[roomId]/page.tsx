@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { VideoRoom } from '@/components/room/VideoRoom'
 import { AudioSettings } from '@/components/audio'
@@ -31,6 +31,7 @@ export default function RoomPage() {
     audioInputDeviceId: '',
     audioOutputDeviceId: '',
   })
+  const joinAttemptedRef = useRef(false)
 
   const handleDevicesSelected = useCallback((devices: AudioDevices) => {
     setAudioDevices(devices)
@@ -38,13 +39,14 @@ export default function RoomPage() {
 
   // Auto-join if name is provided in URL
   useEffect(() => {
-    if (nameFromUrl && !token) {
+    if (nameFromUrl && !token && !joinAttemptedRef.current) {
+      joinAttemptedRef.current = true
       joinRoom(nameFromUrl)
     }
   }, [nameFromUrl])
 
   const joinRoom = async (name: string) => {
-    if (!name.trim()) return
+    if (!name.trim() || isJoining) return
 
     setIsJoining(true)
     setError(null)

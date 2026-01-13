@@ -22,6 +22,65 @@ interface Utterance {
   participant: Participant
 }
 
+interface GroupedUtterance {
+  id: string
+  text: string
+  startTime: number
+  endTime: number
+  participant: Participant
+}
+
+// Group utterances by participant and sentences (or 10 second chunks)
+function groupUtterances(utterances: Utterance[]): GroupedUtterance[] {
+  if (utterances.length === 0) return []
+
+  const result: GroupedUtterance[] = []
+  let currentGroup: GroupedUtterance | null = null
+
+  for (const utterance of utterances) {
+    const endsWithSentence = /[.!?]$/.test(utterance.text.trim())
+
+    // Start new group if:
+    // 1. No current group
+    // 2. Different participant
+    // 3. Gap > 10 seconds from group start
+    const shouldStartNew =
+      !currentGroup ||
+      currentGroup.participant.id !== utterance.participant.id ||
+      utterance.startTime - currentGroup.startTime > 10
+
+    if (shouldStartNew) {
+      if (currentGroup) {
+        result.push(currentGroup)
+      }
+      currentGroup = {
+        id: utterance.id,
+        text: utterance.text,
+        startTime: utterance.startTime,
+        endTime: utterance.endTime,
+        participant: utterance.participant,
+      }
+    } else {
+      // Append to current group
+      currentGroup.text += ' ' + utterance.text
+      currentGroup.endTime = utterance.endTime
+    }
+
+    // End group if sentence ends (but continue if within 10 seconds)
+    if (endsWithSentence && currentGroup) {
+      result.push(currentGroup)
+      currentGroup = null
+    }
+  }
+
+  // Don't forget the last group
+  if (currentGroup) {
+    result.push(currentGroup)
+  }
+
+  return result
+}
+
 interface Meeting {
   id: string
   startedAt: string
@@ -244,7 +303,7 @@ export default function MeetingDetailPage() {
                 {meeting.utterances.length > 0 ? (
                   <ScrollArea className="h-[600px] pr-4">
                     <div className="space-y-4">
-                      {meeting.utterances.map((utterance) => (
+                      {groupUtterances(meeting.utterances).map((utterance) => (
                         <div key={utterance.id} className="flex gap-4">
                           <div className="text-xs text-gray-400 font-mono w-12 flex-shrink-0 pt-1">
                             {formatTime(utterance.startTime)}

@@ -27,6 +27,7 @@ model Meeting {
   participants Participant[]
   utterances   Utterance[]
   recordings   Recording[]
+  egresses     Egress[]
 
   @@index([roomId])
   @@index([status])
@@ -43,6 +44,7 @@ model Participant {
   leftAt     DateTime?
   utterances Utterance[]
   recordings Recording[]
+  egresses   Egress[]
 
   @@unique([meetingId, identity])
   @@index([meetingId])
@@ -87,6 +89,29 @@ model Recording {
 enum MeetingStatus {
   IN_PROGRESS
   PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Egress {
+  id            String       @id @default(cuid())
+  egressId      String       @unique // LiveKit egress ID
+  meetingId     String
+  meeting       Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  trackSid      String
+  status        EgressStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  @@index([meetingId])
+  @@index([status])
+  @@map("egresses")
+}
+
+enum EgressStatus {
+  ACTIVE
   COMPLETED
   FAILED
 }

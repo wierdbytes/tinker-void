@@ -116,9 +116,47 @@ async function handleTrackPublished(event: any) {
 
   console.log(`Audio track published: ${trackSid} by ${participantIdentity} in room ${roomName}`)
 
+  // Find meeting and participant
+  const dbRoom = await prisma.room.findUnique({
+    where: { id: roomName },
+    include: {
+      meetings: {
+        where: { status: 'IN_PROGRESS' },
+        orderBy: { startedAt: 'desc' },
+        take: 1,
+        include: { participants: true },
+      },
+    },
+  })
+
+  if (!dbRoom || !dbRoom.meetings[0]) {
+    console.log('No active meeting found for track recording')
+    return
+  }
+
+  const meeting = dbRoom.meetings[0]
+  const dbParticipant = meeting.participants.find(p => p.identity === participantIdentity)
+
+  if (!dbParticipant) {
+    console.log(`Participant ${participantIdentity} not found in meeting`)
+    return
+  }
+
   try {
-    await startTrackRecording(roomName, trackSid, participantIdentity)
-    console.log(`Recording started for track ${trackSid}`)
+    const egress = await startTrackRecording(roomName, trackSid, participantIdentity)
+
+    // Save egress to DB for tracking
+    await prisma.egress.create({
+      data: {
+        egressId: egress.egressId,
+        meetingId: meeting.id,
+        participantId: dbParticipant.id,
+        trackSid: trackSid,
+        status: 'ACTIVE',
+      },
+    })
+
+    console.log(`Recording started for track ${trackSid}, egressId: ${egress.egressId}`)
   } catch (error) {
     console.error(`Failed to start recording for track ${trackSid}:`, error)
   }
@@ -196,8 +234,22 @@ async function handleRoomFinished(event: any) {
 
   console.log(`Room ${roomId} finished, meeting ${meeting.id} moved to PROCESSING`)
 
-  // Trigger transcription and summarization (async)
-  triggerPostProcessing(meeting.id)
+  // Check if there are any active egresses still pending
+  const activeEgresses = await prisma.egress.count({
+    where: {
+      meetingId: meeting.id,
+      status: 'ACTIVE',
+    },
+  })
+
+  if (activeEgresses === 0) {
+    // All egresses already completed, trigger transcription immediately
+    console.log(`No active egresses, triggering transcription immediately`)
+    triggerPostProcessing(meeting.id)
+  } else {
+    // Wait for egress_ended webhooks to complete
+    console.log(`Waiting for ${activeEgresses} egress(es) to complete before transcription`)
+  }
 }
 
 async function handleEgressEnded(event: any) {
@@ -209,72 +261,79 @@ async function handleEgressEnded(event: any) {
     return
   }
 
-  console.log('egressInfo:', JSON.stringify(egressInfo, null, 2))
-
-  const roomName = egressInfo.roomName
-  const fileResults = egressInfo.fileResults || []
-  const file = fileResults[0] // First file result
-
-  if (!file) {
-    console.log('No file in egressInfo.fileResults')
+  const livekitEgressId = egressInfo.egressId
+  if (!livekitEgressId) {
+    console.log('No egressId in egressInfo')
     return
   }
 
-  console.log(`Egress ended for room ${roomName}, file:`, JSON.stringify(file, null, 2))
+  console.log(`Egress ended: ${livekitEgressId}`)
 
-  // Find the meeting
-  const dbRoom = await prisma.room.findUnique({
-    where: { id: roomName },
+  // Find egress record by LiveKit egressId
+  const egress = await prisma.egress.findUnique({
+    where: { egressId: livekitEgressId },
     include: {
-      meetings: {
-        orderBy: { startedAt: 'desc' },
-        take: 1,
-        include: {
-          participants: true,
-        },
-      },
+      meeting: true,
+      participant: true,
     },
   })
 
-  if (!dbRoom) return
+  if (!egress) {
+    console.log(`Egress not found in DB: ${livekitEgressId}`)
+    return
+  }
 
-  const meeting = dbRoom.meetings[0]
-  if (!meeting) return
-
-  // Try to extract participant identity from filename
-  const filename = file.filename || file.filepath || ''
-  console.log(`Looking for participant in filename: ${filename}`)
-  console.log(`Meeting participants:`, meeting.participants.map(p => ({ id: p.id, identity: p.identity, name: p.name })))
-
-  const participant = meeting.participants.find(p => filename.includes(p.identity))
-
-  if (participant) {
+  // Process file results
+  const fileResults = egressInfo.fileResults || []
+  for (const file of fileResults) {
+    const filename = file.filename || file.filepath || ''
     const fileUrl = file.filepath || file.filename || ''
-    // Duration comes as BigInt in nanoseconds, convert to seconds as Float
     const durationNs = file.duration || 0n
     const durationSec = Number(durationNs) / 1_000_000_000
 
-    console.log(`Creating recording: meetingId=${meeting.id}, participantId=${participant.id}, fileUrl=${fileUrl}, duration=${durationSec}s`)
+    console.log(`Creating recording: meetingId=${egress.meetingId}, participantId=${egress.participantId}, fileUrl=${fileUrl}, duration=${durationSec}s`)
 
     await prisma.recording.create({
       data: {
-        meetingId: meeting.id,
-        participantId: participant.id,
+        meetingId: egress.meetingId,
+        participantId: egress.participantId,
         fileUrl: fileUrl,
         fileName: filename,
         duration: durationSec,
       },
     })
 
-    console.log(`Recording saved for participant ${participant.name}`)
-  } else {
-    console.log(`No matching participant found for filename: ${filename}`)
+    console.log(`Recording saved for participant ${egress.participant.name}`)
+  }
+
+  // Mark egress as completed
+  await prisma.egress.update({
+    where: { id: egress.id },
+    data: {
+      status: 'COMPLETED',
+      completedAt: new Date(),
+    },
+  })
+
+  // Check if all egresses for this meeting are completed
+  const activeEgresses = await prisma.egress.count({
+    where: {
+      meetingId: egress.meetingId,
+      status: 'ACTIVE',
+    },
+  })
+
+  console.log(`Active egresses remaining for meeting ${egress.meetingId}: ${activeEgresses}`)
+
+  // If meeting is in PROCESSING state and all egresses are done, trigger transcription
+  if (egress.meeting.status === 'PROCESSING' && activeEgresses === 0) {
+    console.log(`All egresses completed, triggering transcription for meeting ${egress.meetingId}`)
+    triggerPostProcessing(egress.meetingId)
   }
 }
 
 async function triggerPostProcessing(meetingId: string) {
   try {
-    // Call transcription API
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
     await fetch(`${baseUrl}/api/transcribe`, {
