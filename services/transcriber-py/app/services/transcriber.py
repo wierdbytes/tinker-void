@@ -99,6 +99,31 @@ class TranscriberService:
         # Build full text from segments
         full_text = " ".join(seg.text.strip() for seg in segments_list)
 
+        # DEBUG: Log detailed segment and word information
+        logger.info(f"=== DEBUG: Transcription results for {audio_path} ===")
+        logger.info(f"Total segments from Whisper: {len(segments_list)}")
+
+        for i, seg in enumerate(segments_list):
+            logger.info(f"--- Segment {i} ---")
+            logger.info(f"  Segment time: {seg.start:.3f}s - {seg.end:.3f}s (duration: {seg.end - seg.start:.3f}s)")
+            logger.info(f"  Segment text: {seg.text.strip()[:100]}...")
+
+            if seg.words:
+                logger.info(f"  Word count: {len(seg.words)}")
+                logger.info(f"  Word timestamps:")
+                for j, word in enumerate(seg.words):
+                    # Log each word with its timing
+                    word_text = word.word.strip()
+                    logger.info(f"    [{j:3d}] {word.start:7.3f}s - {word.end:7.3f}s: '{word.word}'")
+
+                    # Highlight sentence-ending words
+                    if word_text and word_text[-1] in '.!?':
+                        logger.info(f"          ^ SENTENCE END at {word.end:.3f}s")
+            else:
+                logger.info(f"  No word timestamps available")
+
+        logger.info(f"=== END DEBUG ===")
+
         # Process segments into response format
         # Split large segments into sentences for better conversation display
         processed_segments = []
