@@ -4,27 +4,27 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: tinkerdesk-postgres
+    container_name: tinkervoid-postgres
     environment:
-      POSTGRES_USER: tinkerdesk
-      POSTGRES_PASSWORD: tinkerdesk_secret
-      POSTGRES_DB: tinkerdesk
+      POSTGRES_USER: tinkervoid
+      POSTGRES_PASSWORD: tinkervoid_secret
+      POSTGRES_DB: tinkervoid
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tinkerdesk"]
+      test: ["CMD-SHELL", "pg_isready -U tinkervoid"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # MinIO - S3-compatible object storage
   minio:
     image: minio/minio:latest
-    container_name: tinkerdesk-minio
+    container_name: tinkervoid-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -40,12 +40,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # MinIO bucket setup
   minio-setup:
     image: minio/mc:latest
-    container_name: tinkerdesk-minio-setup
+    container_name: tinkervoid-minio-setup
     depends_on:
       minio:
         condition: service_healthy
@@ -57,12 +57,12 @@ services:
       exit 0;
       "
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # Redis for job queue
   redis:
     image: redis:7-alpine
-    container_name: tinkerdesk-redis
+    container_name: tinkervoid-redis
     ports:
       - "6379:6379"
     volumes:
@@ -73,12 +73,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # LiveKit Server
   livekit:
     image: livekit/livekit-server:v1.9.8
-    container_name: tinkerdesk-livekit
+    container_name: tinkervoid-livekit
     command: --config /etc/livekit.yaml
     volumes:
       - ./services/livekit/livekit.yaml:/etc/livekit.yaml:ro
@@ -90,12 +90,12 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # LiveKit Egress (for recording)
   livekit-egress:
     image: livekit/egress:v1.12.0
-    container_name: tinkerdesk-livekit-egress
+    container_name: tinkervoid-livekit-egress
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
     volumes:
@@ -107,14 +107,14 @@ services:
     cap_add:
       - SYS_ADMIN
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # Transcriber service (Python + faster-whisper)
   transcriber:
     build:
       context: ./services/transcriber-py
       dockerfile: Dockerfile
-    container_name: tinkerdesk-transcriber
+    container_name: tinkervoid-transcriber
     environment:
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -142,16 +142,16 @@ services:
         reservations:
           memory: 4G
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
   # Next.js Application
   app:
     build:
       context: ./app
       dockerfile: Dockerfile
-    container_name: tinkerdesk-app
+    container_name: tinkervoid-app
     environment:
-      - DATABASE_URL=postgresql://tinkerdesk:tinkerdesk_secret@postgres:5432/tinkerdesk
+      - DATABASE_URL=postgresql://tinkervoid:tinkervoid_secret@postgres:5432/tinkervoid
       - LIVEKIT_URL=ws://localhost:7880
       - LIVEKIT_API_KEY=devkey
       - LIVEKIT_API_SECRET=secret123456789012345678901234567890
@@ -174,7 +174,7 @@ services:
       livekit:
         condition: service_started
     networks:
-      - tinkerdesk-network
+      - tinkervoid-network
 
 volumes:
   postgres_data:
@@ -182,5 +182,5 @@ volumes:
   redis_data:
 
 networks:
-  tinkerdesk-network:
+  tinkervoid-network:
     driver: bridge

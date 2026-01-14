@@ -1,8 +1,8 @@
-# CLAUDE.md - Контекст проекта TinkerDesk
+# CLAUDE.md - Контекст проекта TinkerVoid
 
 ## Описание проекта
 
-TinkerDesk — веб-приложение для голосовых встреч команды с функциями:
+TinkerVoid — веб-приложение для голосовых встреч команды с функциями:
 - Голосовая связь через LiveKit (self-hosted)
 - Автоматическая запись каждого участника отдельно (LiveKit Egress → MinIO)
 - Транскрибация речи в текст (Parakeet V3 на CPU)
@@ -54,7 +54,7 @@ Meeting status: COMPLETED
 ## Структура проекта
 
 ```
-tinkerdesk/
+tinkervoid/
 ├── app/                          # Next.js приложение
 │   ├── src/
 │   │   ├── app/                  # Pages и API routes
@@ -139,7 +139,7 @@ NEXT_PUBLIC_LIVEKIT_URL=ws://localhost:7880
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 # Database
-DATABASE_URL=postgresql://tinkerdesk:tinkerdesk_secret@localhost:5432/tinkerdesk
+DATABASE_URL=postgresql://tinkervoid:tinkervoid_secret@localhost:5432/tinkervoid
 
 # LiveKit
 LIVEKIT_API_KEY=devkey

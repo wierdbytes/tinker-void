@@ -2,7 +2,7 @@
 
 set -e
 
-echo "=== TinkerDesk Setup ==="
+echo "=== TinkerVoid Setup ==="
 echo ""
 
 # Check for Docker

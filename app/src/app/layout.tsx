@@ -6,7 +6,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/ThemeProvider'
 
 export const metadata: Metadata = {
-  title: 'TinkerDesk - Голосовые встречи команды',
+  title: 'TinkerVoid - Голосовые встречи команды',
   description: 'Приложение для голосовых звонков с транскрибацией и суммаризацией',
 }
 

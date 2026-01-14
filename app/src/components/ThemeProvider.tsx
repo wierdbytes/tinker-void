@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   useEffect(() => {
     setMounted(true)
-    const stored = localStorage.getItem('tinkerdesk-theme') as Theme | null
+    const stored = localStorage.getItem('tinkervoid-theme') as Theme | null
     if (stored) {
       setTheme(stored)
     }
@@ -77,7 +77,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const handleSetTheme = (newTheme: Theme) => {
     setTheme(newTheme)
-    localStorage.setItem('tinkerdesk-theme', newTheme)
+    localStorage.setItem('tinkervoid-theme', newTheme)
   }
 
   return (

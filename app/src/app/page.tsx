@@ -72,7 +72,7 @@ export default function HomePage() {
               <SoundWaveIcon className="text-primary" />
             </div>
             <h1 className="text-3xl font-bold text-foreground mb-3 tracking-tight">
-              Tinker Desk
+              Tinker Void
             </h1>
             <p className="text-muted-foreground text-lg">
               создайте своё пространство

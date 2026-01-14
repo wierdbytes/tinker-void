@@ -2,7 +2,7 @@
 name = "transcriber-rs"
 version = "0.1.0"
 edition = "2021"
-description = "TinkerDesk Transcription Service using Parakeet V3"
+description = "TinkerVoid Transcription Service using Parakeet V3"
 
 [dependencies]
 # Transcription - Parakeet V3 via ONNX Runtime

@@ -1,4 +1,4 @@
-# TinkerDesk
+# TinkerVoid
 
 ## Production Deployment
 
@@ -11,8 +11,8 @@
 
 ```bash
 # 1. Clone repository
-git clone <repo> tinkerdesk
-cd tinkerdesk
+git clone <repo> tinkervoid
+cd tinkervoid
 
 # 2. Initialize configuration (generates secure passwords)
 ./scripts/deploy.sh --init

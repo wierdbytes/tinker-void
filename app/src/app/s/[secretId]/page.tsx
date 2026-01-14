@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Loader2, Settings, ChevronDown, ArrowLeft, Mic, Waves, History } from 'lucide-react'
 
-const USER_NAME_KEY = 'tinkerdesk_user_name'
+const USER_NAME_KEY = 'tinkervoid_user_name'
 
 interface AudioDevices {
   audioInputDeviceId: string

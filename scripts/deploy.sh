@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# TinkerDesk Production Deployment Script
+# TinkerVoid Production Deployment Script
 # =============================================================================
 # Usage:
 #   ./scripts/deploy.sh              - Interactive setup and deploy
@@ -115,7 +115,7 @@ init_config() {
 
     # Ask for domain
     echo ""
-    read -p "Enter your domain (e.g., tinkerdesk.example.com): " DOMAIN
+    read -p "Enter your domain (e.g., tinkervoid.example.com): " DOMAIN
     if [ -z "$DOMAIN" ]; then
         log_error "Domain is required"
         exit 1
@@ -192,7 +192,7 @@ generate_livekit_configs() {
         cat "$EGRESS_TEMPLATE" | \
             sed "s|{{LIVEKIT_API_KEY}}|$LIVEKIT_API_KEY|g" | \
             sed "s|{{LIVEKIT_API_SECRET}}|$LIVEKIT_API_SECRET|g" | \
-            sed "s|{{MINIO_ROOT_USER}}|${MINIO_ROOT_USER:-tinkerdesk}|g" | \
+            sed "s|{{MINIO_ROOT_USER}}|${MINIO_ROOT_USER:-tinkervoid}|g" | \
             sed "s|{{MINIO_ROOT_PASSWORD}}|$MINIO_ROOT_PASSWORD|g" | \
             sed "s|{{MINIO_BUCKET}}|${MINIO_BUCKET:-recordings}|g" \
             > "$EGRESS_CONFIG"
@@ -216,7 +216,7 @@ docker_compose() {
 }
 
 start_services() {
-    log_info "Starting TinkerDesk services..."
+    log_info "Starting TinkerVoid services..."
 
     if [ ! -f "$ENV_FILE" ]; then
         log_error "Configuration not found. Run './scripts/deploy.sh --init' first."
@@ -236,13 +236,13 @@ start_services() {
 }
 
 stop_services() {
-    log_info "Stopping TinkerDesk services..."
+    log_info "Stopping TinkerVoid services..."
     docker_compose down
     log_success "Services stopped"
 }
 
 restart_services() {
-    log_info "Restarting TinkerDesk services..."
+    log_info "Restarting TinkerVoid services..."
     stop_services
     start_services
 }
@@ -258,7 +258,7 @@ show_logs() {
 
 show_status() {
     echo ""
-    echo "=== TinkerDesk Service Status ==="
+    echo "=== TinkerVoid Service Status ==="
     echo ""
     docker_compose ps
     echo ""
@@ -280,7 +280,7 @@ show_status() {
 }
 
 update_services() {
-    log_info "Updating TinkerDesk..."
+    log_info "Updating TinkerVoid..."
 
     # Pull latest code (if git repo)
     if [ -d "$PROJECT_DIR/.git" ]; then
@@ -307,7 +307,7 @@ run_migrations() {
 # -----------------------------------------------------------------------------
 
 show_help() {
-    echo "TinkerDesk Production Deployment Script"
+    echo "TinkerVoid Production Deployment Script"
     echo ""
     echo "Usage: ./scripts/deploy.sh [command]"
     echo ""
@@ -364,7 +364,7 @@ main() {
         "")
             # Interactive mode
             echo ""
-            echo "=== TinkerDesk Production Deployment ==="
+            echo "=== TinkerVoid Production Deployment ==="
             echo ""
 
             if [ ! -f "$ENV_FILE" ]; then

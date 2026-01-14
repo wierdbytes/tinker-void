@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 
-app = FastAPI(title="TinkerDesk Transcriber", lifespan=lifespan)
+app = FastAPI(title="TinkerVoid Transcriber", lifespan=lifespan)
 
 # MinIO client
 minio_client = Minio(

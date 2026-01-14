@@ -8,27 +8,27 @@ services:
   # PostgreSQL Database - NO EXTERNAL PORT
   postgres:
     image: postgres:16-alpine
-    container_name: tinkerdesk-postgres
+    container_name: tinkervoid-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tinkerdesk}
+      POSTGRES_USER: ${POSTGRES_USER:-tinkervoid}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-tinkerdesk}
+      POSTGRES_DB: ${POSTGRES_DB:-tinkervoid}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # NO ports exposed - only accessible within Docker network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tinkerdesk}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tinkervoid}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # MinIO - S3-compatible object storage - NO EXTERNAL PORT
   minio:
     image: minio/minio:latest
-    container_name: tinkerdesk-minio
+    container_name: tinkervoid-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -43,12 +43,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # MinIO bucket setup
   minio-setup:
     image: minio/mc:latest
-    container_name: tinkerdesk-minio-setup
+    container_name: tinkervoid-minio-setup
     depends_on:
       minio:
         condition: service_healthy
@@ -64,12 +64,12 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-recordings}
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # Redis for job queue - NO EXTERNAL PORT
   redis:
     image: redis:7-alpine
-    container_name: tinkerdesk-redis
+    container_name: tinkervoid-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
@@ -81,12 +81,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # LiveKit Server - EXTERNAL PORTS (required for WebRTC)
   livekit:
     image: livekit/livekit-server:v1.9.8
-    container_name: tinkerdesk-livekit
+    container_name: tinkervoid-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml
     volumes:
@@ -99,12 +99,12 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # LiveKit Egress (for recording) - NO EXTERNAL PORT
   livekit-egress:
     image: livekit/egress:v1.12.0
-    container_name: tinkerdesk-livekit-egress
+    container_name: tinkervoid-livekit-egress
     restart: unless-stopped
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
@@ -117,14 +117,14 @@ services:
     cap_add:
       - SYS_ADMIN
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # Transcriber service - NO EXTERNAL PORT
   transcriber:
     build:
       context: ./services/transcriber-py
       dockerfile: Dockerfile
-    container_name: tinkerdesk-transcriber
+    container_name: tinkervoid-transcriber
     restart: unless-stopped
     environment:
       - MINIO_ENDPOINT=minio:9000
@@ -151,7 +151,7 @@ services:
         reservations:
           memory: ${TRANSCRIBER_MEMORY_RESERVATION:-4G}
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
   # Next.js Application - EXTERNAL PORT
   app:
@@ -161,10 +161,10 @@ services:
       args:
         - NEXT_PUBLIC_LIVEKIT_URL=${NEXT_PUBLIC_LIVEKIT_URL}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-    container_name: tinkerdesk-app
+    container_name: tinkervoid-app
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-tinkerdesk}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tinkerdesk}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tinkervoid}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tinkervoid}
       - LIVEKIT_URL=ws://livekit:7880
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
@@ -189,7 +189,7 @@ services:
       livekit:
         condition: service_started
     networks:
-      - tinkerdesk-internal
+      - tinkervoid-internal
 
 volumes:
   postgres_data:
@@ -197,6 +197,6 @@ volumes:
   redis_data:
 
 networks:
-  tinkerdesk-internal:
+  tinkervoid-internal:
     driver: bridge
     internal: false  # Allow outbound internet for API calls (Claude, etc.)

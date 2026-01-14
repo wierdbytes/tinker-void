@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { Room, Track } from 'livekit-client'
 
-const STORAGE_KEY_INPUT = 'tinkerdesk-audio-input-device'
-const STORAGE_KEY_OUTPUT = 'tinkerdesk-audio-output-device'
+const STORAGE_KEY_INPUT = 'tinkervoid-audio-input-device'
+const STORAGE_KEY_OUTPUT = 'tinkervoid-audio-output-device'
 
 export interface AudioDevicesState {
   audioInputDevices: MediaDeviceInfo[]

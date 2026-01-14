@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TinkerDesk Transcriber",
+    title="TinkerVoid Transcriber",
     description="Speech-to-text transcription service using faster-whisper",
     version="2.0.0",
     lifespan=lifespan,

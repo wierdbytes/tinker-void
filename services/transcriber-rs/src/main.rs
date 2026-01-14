@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    info!("Starting TinkerDesk Transcriber Service (Rust)");
+    info!("Starting TinkerVoid Transcriber Service (Rust)");
 
     // Load configuration
     let config = Config::from_env();

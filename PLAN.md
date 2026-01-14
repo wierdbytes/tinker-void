@@ -1,4 +1,4 @@
-# TinkerDesk - План разработки
+# TinkerVoid - План разработки
 
 ## Обзор проекта
 
@@ -59,7 +59,7 @@
 ## Структура проекта
 
 ```
-tinkerdesk/
+tinkervoid/
 ├── docker-compose.yml              # Оркестрация всех сервисов
 ├── .env.example                    # Переменные окружения
 ├── .gitignore
@@ -256,7 +256,7 @@ enum MeetingStatus {
 
 ```env
 # Database
-DATABASE_URL=postgresql://tinkerdesk:tinkerdesk_secret@localhost:5432/tinkerdesk
+DATABASE_URL=postgresql://tinkervoid:tinkervoid_secret@localhost:5432/tinkervoid
 
 # LiveKit
 LIVEKIT_URL=ws://localhost:7880
