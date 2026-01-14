@@ -11,8 +11,8 @@
 
 ```bash
 # 1. Clone repository
-git clone <repo> tinkervoid
-cd tinkervoid
+git clone https://github.com/wierdbytes/tinker-void.git tinker-void
+cd tinker-void
 
 # 2. Initialize configuration (generates secure passwords)
 ./scripts/deploy.sh --init
