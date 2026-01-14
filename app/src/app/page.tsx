@@ -1,20 +1,13 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AudioSettings } from '@/components/audio'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Users, Settings, ChevronDown, ArrowRight } from 'lucide-react'
-
-interface AudioDevices {
-  audioInputDeviceId: string
-  audioOutputDeviceId: string
-}
+import { Users, ArrowRight } from 'lucide-react'
 
 function SoundWaveIcon({ className }: { className?: string }) {
   return (
@@ -31,19 +24,10 @@ function SoundWaveIcon({ className }: { className?: string }) {
 export default function HomePage() {
   const router = useRouter()
   const [roomName, setRoomName] = useState('')
-  const [userName, setUserName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [audioDevices, setAudioDevices] = useState<AudioDevices>({
-    audioInputDeviceId: '',
-    audioOutputDeviceId: '',
-  })
-
-  const handleDevicesChange = useCallback((devices: AudioDevices) => {
-    setAudioDevices(devices)
-  }, [])
 
   const createRoom = async () => {
-    if (!roomName.trim() || !userName.trim()) return
+    if (!roomName.trim()) return
 
     setIsLoading(true)
     try {
@@ -55,7 +39,7 @@ export default function HomePage() {
       const data = await res.json()
 
       if (data.secretId) {
-        router.push(`/s/${data.secretId}?name=${encodeURIComponent(userName)}`)
+        router.push(`/s/${data.secretId}`)
       }
     } catch (error) {
       console.error('Failed to create room:', error)
@@ -99,18 +83,6 @@ export default function HomePage() {
           <Card className="shadow-soft-lg border-border/50 fade-in-up fade-in-delay-1">
             <CardContent className="p-6 space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="userName" className="text-sm font-medium">
-                  Ваше имя
-                </Label>
-                <Input
-                  id="userName"
-                  placeholder="Как вас называть?"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="roomName" className="text-sm font-medium">
                   Название встречи
                 </Label>
@@ -124,28 +96,10 @@ export default function HomePage() {
                 />
               </div>
 
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
-                  >
-                    <span className="flex items-center gap-2 text-sm">
-                      <Settings className="w-4 h-4" />
-                      Настройки аудио
-                    </span>
-                    <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                  <AudioSettings onDevicesChange={handleDevicesChange} />
-                </CollapsibleContent>
-              </Collapsible>
-
               <Button
                 className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
                 onClick={createRoom}
-                disabled={!roomName.trim() || !userName.trim() || isLoading}
+                disabled={!roomName.trim() || isLoading}
               >
                 <Users className="w-4 h-4 mr-2" />
                 {isLoading ? 'Создание...' : 'Создать встречу'}

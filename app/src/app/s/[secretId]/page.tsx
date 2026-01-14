@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { VideoRoom } from '@/components/room/VideoRoom'
 import { AudioSettings } from '@/components/audio'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Loader2, Settings, ChevronDown, ArrowLeft, Mic, Waves, History } from 'lucide-react'
+
+const USER_NAME_KEY = 'tinkerdesk_user_name'
 
 interface AudioDevices {
   audioInputDeviceId: string
@@ -25,29 +27,30 @@ interface RoomInfo {
 
 export default function SecretRoomPage() {
   const params = useParams()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const secretId = params.secretId as string
-  const nameFromUrl = searchParams.get('name')
 
   const [room, setRoom] = useState<RoomInfo | null>(null)
   const [isLoadingRoom, setIsLoadingRoom] = useState(true)
   const [token, setToken] = useState<string | null>(null)
-  const [userName, setUserName] = useState(nameFromUrl || '')
+  const [userName, setUserName] = useState('')
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [audioDevices, setAudioDevices] = useState<AudioDevices>({
     audioInputDeviceId: '',
     audioOutputDeviceId: '',
   })
-  const joinAttemptedRef = useRef(false)
 
   const handleDevicesSelected = useCallback((devices: AudioDevices) => {
     setAudioDevices(devices)
   }, [])
 
-  // Fetch room info on mount
+  // Load saved name and fetch room info on mount
   useEffect(() => {
+    const savedName = localStorage.getItem(USER_NAME_KEY)
+    if (savedName) {
+      setUserName(savedName)
+    }
     fetchRoomInfo()
   }, [secretId])
 
@@ -71,13 +74,6 @@ export default function SecretRoomPage() {
     }
   }
 
-  useEffect(() => {
-    if (room && nameFromUrl && !token && !joinAttemptedRef.current) {
-      joinAttemptedRef.current = true
-      joinRoom(nameFromUrl)
-    }
-  }, [room, nameFromUrl])
-
   const joinRoom = async (name: string) => {
     if (!name.trim() || isJoining) return
 
@@ -100,6 +96,10 @@ export default function SecretRoomPage() {
       }
 
       const data = await res.json()
+
+      // Save name to localStorage for next time
+      localStorage.setItem(USER_NAME_KEY, name.trim())
+
       setToken(data.token)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось присоединиться')
@@ -109,6 +109,7 @@ export default function SecretRoomPage() {
 
   const handleLeave = () => {
     setToken(null)
+    setIsJoining(false)
     // Stay on the same page (don't redirect to home)
   }
 
