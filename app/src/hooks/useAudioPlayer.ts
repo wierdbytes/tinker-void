@@ -45,7 +45,9 @@ export interface AudioPlayerReturn extends PlayerState {
   setVolume: (trackId: string, volume: number) => void
 }
 
-const MINIO_BASE_URL = process.env.NEXT_PUBLIC_MINIO_URL || 'http://localhost:9000/recordings'
+// Use API route to proxy recordings from MinIO (works in all environments)
+// Can be overridden with NEXT_PUBLIC_MINIO_URL for direct MinIO access in development
+const RECORDINGS_BASE_URL = process.env.NEXT_PUBLIC_MINIO_URL || '/api/recordings'
 
 // Calculate offset in seconds for a recording relative to meeting start
 // Uses recording.startedAt (from LiveKit Egress) for accurate timing
@@ -134,7 +136,7 @@ export function useAudioPlayer(
       // Load all audio buffers
       const loadPromises = recordings.map(async (rec) => {
         try {
-          const url = `${MINIO_BASE_URL}/${rec.fileUrl}`
+          const url = `${RECORDINGS_BASE_URL}/${rec.fileUrl}`
           const response = await fetch(url)
 
           if (!response.ok) {
