@@ -23,6 +23,7 @@ interface VideoRoomProps {
   token: string
   serverUrl: string
   roomId: string
+  roomName?: string
   participantName: string
   onLeave: () => void
   secretId?: string
@@ -34,6 +35,7 @@ export function VideoRoom({
   token,
   serverUrl,
   roomId,
+  roomName,
   participantName,
   onLeave,
   secretId,
@@ -60,7 +62,7 @@ export function VideoRoom({
       options={roomOptions}
       className="h-full"
     >
-      <RoomContent roomId={roomId} participantName={participantName} onLeave={onLeave} secretId={secretId} />
+      <RoomContent roomId={roomId} roomName={roomName} participantName={participantName} onLeave={onLeave} secretId={secretId} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   )
@@ -68,12 +70,13 @@ export function VideoRoom({
 
 interface RoomContentProps {
   roomId: string
+  roomName?: string
   participantName: string
   onLeave: () => void
   secretId?: string
 }
 
-function RoomContent({ roomId, participantName, onLeave, secretId }: RoomContentProps) {
+function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: RoomContentProps) {
   const room = useRoomContext()
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant()
   const participants = useParticipants()
@@ -123,46 +126,72 @@ function RoomContent({ roomId, participantName, onLeave, secretId }: RoomContent
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm">
-        <div className="flex items-center gap-4">
+      <header className="px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm">
+        {/* Row 1: Icon, Room Name, Link Button, Right Actions */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
               <Waves className="w-4 h-4 text-primary" />
             </div>
-            <div>
-              <h1 className="font-semibold text-foreground">
-                {roomId.slice(0, 8)}...
-              </h1>
-              <p className="text-xs text-muted-foreground">В эфире</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={copyRoomLink}
-            className="h-8 text-xs border-border/50 hover:bg-surface-secondary"
-          >
-            {copied ? <Check className="w-3 h-3 mr-1.5" /> : <Copy className="w-3 h-3 mr-1.5" />}
-            {copied ? 'Скопировано' : 'Ссылка'}
-          </Button>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Users className="w-4 h-4" />
-            <span className="text-sm font-medium">{participants.length}</span>
-          </div>
-          {secretId && (
+            <h1 className="font-semibold text-foreground">
+              {roomName || 'Встреча'}
+            </h1>
+
+            {/* Invite prompt when alone (desktop) */}
+            {participants.length === 1 ? (
+              <button
+                onClick={copyRoomLink}
+                className="hidden sm:inline-flex items-center gap-2 h-8 px-3 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
+              >
+                <span>Вы единственный участник</span>
+                <span className="text-amber-500/50">·</span>
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                <span>{copied ? 'Скопировано!' : 'Поделиться'}</span>
+              </button>
+            ) : null}
+
+            {/* Regular link button */}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={() => window.open(`/s/${secretId}/history`, '_blank')}
-              className="h-8 text-xs text-muted-foreground hover:text-foreground"
+              onClick={copyRoomLink}
+              className={cn(
+                'h-8 text-xs border-border/50 hover:bg-muted hover:text-foreground',
+                participants.length === 1 && 'sm:hidden'
+              )}
             >
-              <History className="w-3 h-3 mr-1.5" />
-              История
+              {copied ? <Check className="w-3 h-3 mr-1.5" /> : <Copy className="w-3 h-3 mr-1.5" />}
+              {copied ? 'Скопировано' : 'Ссылка'}
             </Button>
-          )}
-          <ThemeToggle />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {secretId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.open(`/s/${secretId}/history`, '_blank')}
+                className="h-8 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <History className="w-3 h-3 mr-1.5" />
+                <span className="hidden sm:inline">История</span>
+              </Button>
+            )}
+            <ThemeToggle />
+          </div>
+        </div>
+
+        {/* Row 2: Status indicators */}
+        <div className="flex items-center gap-2 mt-2 ml-12">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            В эфире
+          </span>
+          <span className="text-border">·</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Users className="w-3 h-3" />
+            {participants.length}
+          </span>
         </div>
       </header>
 
@@ -216,13 +245,6 @@ function RoomContent({ roomId, participantName, onLeave, secretId }: RoomContent
               ))}
             </div>
 
-            {/* Empty state */}
-            {participants.length === 1 && (
-              <div className="text-center mt-12 text-muted-foreground">
-                <p className="text-sm">Вы единственный участник</p>
-                <p className="text-xs mt-1">Поделитесь ссылкой, чтобы пригласить других</p>
-              </div>
-            )}
           </div>
         )}
       </div>

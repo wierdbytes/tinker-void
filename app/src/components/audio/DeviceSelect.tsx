@@ -48,7 +48,7 @@ export function DeviceSelect({
             <SelectItem
               key={device.deviceId}
               value={device.deviceId}
-              className="text-foreground focus:bg-surface-secondary"
+              className="text-foreground focus:bg-muted focus:text-foreground"
             >
               {device.label || `${kind === 'audioinput' ? 'Микрофон' : 'Динамики'} ${device.deviceId.slice(0, 8)}`}
             </SelectItem>

@@ -168,6 +168,7 @@ export default function SecretRoomPage() {
           token={token}
           serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880'}
           roomId={room.id}
+          roomName={room.name}
           participantName={userName}
           onLeave={handleLeave}
           secretId={secretId}
