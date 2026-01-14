@@ -97,6 +97,14 @@ class SileroVAD:
                 out, state = self.session.run(None, ort_inputs)
                 speech_probs.append(out[0][0])
 
+            # Debug: log probability stats
+            if speech_probs:
+                probs_array = np.array(speech_probs)
+                logger.info(
+                    f"VAD probs: min={probs_array.min():.3f}, max={probs_array.max():.3f}, "
+                    f"mean={probs_array.mean():.3f}, >threshold={np.sum(probs_array > threshold)}/{len(probs_array)}"
+                )
+
             # Convert probabilities to timestamps
             segments = self._probs_to_segments(
                 speech_probs,
