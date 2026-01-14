@@ -8,6 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAudioPlayer } from '@/hooks/useAudioPlayer'
+import { MeetingPlayer } from '@/components/player/MeetingPlayer'
 
 interface Participant {
   id: string
@@ -28,6 +30,13 @@ interface GroupedUtterance {
   text: string
   startTime: number
   endTime: number
+  participant: Participant
+}
+
+interface Recording {
+  id: string
+  fileUrl: string
+  duration: number
   participant: Participant
 }
 
@@ -84,6 +93,7 @@ interface Meeting {
   }
   participants: Participant[]
   utterances: Utterance[]
+  recordings: Recording[]
 }
 
 // Modern gradient pairs for participants
@@ -159,6 +169,9 @@ export default function MeetingDetailPage() {
   meeting?.participants.forEach((p, i) => {
     participantStyles[p.id] = participantGradients[i % participantGradients.length]
   })
+
+  // Audio player hook
+  const player = useAudioPlayer(meeting?.recordings, meeting?.startedAt)
 
   if (isLoading) {
     return (
@@ -260,8 +273,15 @@ export default function MeetingDetailPage() {
             </div>
           </section>
 
+          {/* Audio Player */}
+          {meeting.recordings && meeting.recordings.length > 0 && (
+            <section className="mb-8 fade-in-up fade-in-delay-1">
+              <MeetingPlayer player={player} participantStyles={participantStyles} />
+            </section>
+          )}
+
           {/* Transcript */}
-          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-1 overflow-hidden">
+          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-2 overflow-hidden">
             <CardContent className="p-0">
               <div className="px-6 py-4 border-b border-border/50 bg-card">
                 <h2 className="font-semibold text-foreground">Транскрипт</h2>
@@ -275,8 +295,9 @@ export default function MeetingDetailPage() {
                       return (
                         <div
                           key={utterance.id}
+                          onClick={() => player.seek(utterance.startTime)}
                           className={cn(
-                            'flex gap-4 p-4 rounded-xl transition-colors',
+                            'flex gap-4 p-4 rounded-xl transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md',
                             style?.bg
                           )}
                         >
