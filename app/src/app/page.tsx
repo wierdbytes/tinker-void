@@ -102,7 +102,7 @@ export default function HomePage() {
                 disabled={!roomName.trim() || isLoading}
               >
                 <Users className="w-4 h-4 mr-2" />
-                {isLoading ? 'Создание...' : 'Создать встречу'}
+                {isLoading ? 'Создание...' : 'Создать комнату'}
                 {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </CardContent>
