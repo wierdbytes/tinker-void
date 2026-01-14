@@ -130,6 +130,22 @@ docker compose logs -f livekit-egress   # Egress (запись)
 docker compose logs -f transcriber      # Транскрибация
 ```
 
+### Production Deployment
+```bash
+./scripts/deploy.sh              # Интерактивная настройка и деплой
+./scripts/deploy.sh --init       # Инициализация конфига (генерация паролей)
+./scripts/deploy.sh --start      # Запуск всех сервисов
+./scripts/deploy.sh --stop       # Остановка всех сервисов
+./scripts/deploy.sh --restart    # Перезапуск всех сервисов
+./scripts/deploy.sh --logs       # Просмотр логов
+./scripts/deploy.sh --logs app   # Логи конкретного сервиса
+./scripts/deploy.sh --status     # Статус сервисов
+./scripts/deploy.sh --update     # Обновление и перезапуск
+./scripts/deploy.sh --migrate    # Миграции базы данных
+./scripts/deploy.sh --traefik-on  # Включить Traefik reverse proxy
+./scripts/deploy.sh --traefik-off # Отключить Traefik reverse proxy
+```
+
 ## Переменные окружения
 
 Файл `app/.env.local`:

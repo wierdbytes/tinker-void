@@ -35,6 +35,8 @@ cd tinkervoid
 | `./scripts/deploy.sh --status` | Check service status |
 | `./scripts/deploy.sh --update` | Pull latest code and restart |
 | `./scripts/deploy.sh --migrate` | Run database migrations |
+| `./scripts/deploy.sh --traefik-on` | Enable Traefik reverse proxy |
+| `./scripts/deploy.sh --traefik-off` | Disable Traefik reverse proxy |
 
 ### Configuration
 
@@ -52,11 +54,38 @@ TRANSCRIBER_CPU_THREADS=4
 TRANSCRIBER_LANGUAGE=ru
 ```
 
+### Traefik Integration
+
+To expose the app via Traefik reverse proxy:
+
+```bash
+# Enable during init (interactive prompt)
+./scripts/deploy.sh --init
+
+# Or enable for existing config
+./scripts/deploy.sh --traefik-on
+./scripts/deploy.sh --restart
+```
+
+Configuration in `.env.prod`:
+
+```bash
+USE_TRAEFIK=true
+TRAEFIK_HOST=tinkervoid.example.com
+TRAEFIK_LIVEKIT_HOST=livekit.example.com
+TRAEFIK_CERTRESOLVER=le
+```
+
+Requirements:
+- External Docker network `traefik` must exist
+- LiveKit ports 7881 (TCP) and 7882 (UDP) remain exposed directly (WebRTC)
+
 ### Files
 
 | File | Description |
 |------|-------------|
 | `docker-compose.prod.yml` | Production Docker configuration |
+| `docker-compose.traefik.yml` | Traefik override (used when `USE_TRAEFIK=true`) |
 | `.env.prod` | Production environment (generated, gitignored) |
 | `.env.prod.example` | Environment template |
 | `scripts/deploy.sh` | Deployment script |

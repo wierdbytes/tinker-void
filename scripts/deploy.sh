@@ -12,6 +12,8 @@
 #   ./scripts/deploy.sh --logs       - View logs
 #   ./scripts/deploy.sh --status     - Check status
 #   ./scripts/deploy.sh --update     - Pull latest and restart
+#   ./scripts/deploy.sh --traefik-on - Enable Traefik reverse proxy
+#   ./scripts/deploy.sh --traefik-off - Disable Traefik reverse proxy
 # =============================================================================
 
 set -e
@@ -31,6 +33,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env.prod"
 ENV_EXAMPLE="$PROJECT_DIR/.env.prod.example"
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.prod.yml"
+TRAEFIK_COMPOSE_FILE="$PROJECT_DIR/docker-compose.traefik.yml"
 LIVEKIT_TEMPLATE="$PROJECT_DIR/services/livekit/livekit.prod.yaml.template"
 LIVEKIT_CONFIG="$PROJECT_DIR/services/livekit/livekit.prod.yaml"
 EGRESS_TEMPLATE="$PROJECT_DIR/services/livekit/egress.prod.yaml.template"
@@ -121,6 +124,26 @@ init_config() {
         exit 1
     fi
 
+    # Ask about Traefik
+    echo ""
+    read -p "Use Traefik reverse proxy? [y/N]: " USE_TRAEFIK_INPUT
+    if [[ "$USE_TRAEFIK_INPUT" =~ ^[Yy]$ ]]; then
+        USE_TRAEFIK=true
+        echo ""
+        read -p "Traefik host for app (default: $DOMAIN): " TRAEFIK_HOST
+        TRAEFIK_HOST=${TRAEFIK_HOST:-$DOMAIN}
+
+        read -p "Traefik host for LiveKit (default: livekit.$DOMAIN): " TRAEFIK_LIVEKIT_HOST
+        TRAEFIK_LIVEKIT_HOST=${TRAEFIK_LIVEKIT_HOST:-livekit.$DOMAIN}
+
+        read -p "Traefik cert resolver (default: le): " TRAEFIK_CERTRESOLVER
+        TRAEFIK_CERTRESOLVER=${TRAEFIK_CERTRESOLVER:-le}
+
+        log_info "Traefik integration enabled"
+    else
+        USE_TRAEFIK=false
+    fi
+
     # Generate secure passwords
     log_info "Generating secure passwords..."
     POSTGRES_PASSWORD=$(generate_password 32)
@@ -140,13 +163,25 @@ init_config() {
     fi
 
     $SED_INPLACE "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" "$ENV_FILE"
-    $SED_INPLACE "s|^NEXT_PUBLIC_LIVEKIT_URL=.*|NEXT_PUBLIC_LIVEKIT_URL=wss://$DOMAIN:7880|" "$ENV_FILE"
-    $SED_INPLACE "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=https://$DOMAIN|" "$ENV_FILE"
     $SED_INPLACE "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" "$ENV_FILE"
     $SED_INPLACE "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=$MINIO_PASSWORD|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_API_KEY=.*|LIVEKIT_API_KEY=$LIVEKIT_API_KEY|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_API_SECRET=.*|LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_WEBHOOK_SECRET=.*|LIVEKIT_WEBHOOK_SECRET=$LIVEKIT_WEBHOOK_SECRET|" "$ENV_FILE"
+
+    # Update Traefik settings
+    $SED_INPLACE "s|^USE_TRAEFIK=.*|USE_TRAEFIK=$USE_TRAEFIK|" "$ENV_FILE"
+    if [ "$USE_TRAEFIK" = "true" ]; then
+        $SED_INPLACE "s|^TRAEFIK_HOST=.*|TRAEFIK_HOST=$TRAEFIK_HOST|" "$ENV_FILE"
+        $SED_INPLACE "s|^TRAEFIK_LIVEKIT_HOST=.*|TRAEFIK_LIVEKIT_HOST=$TRAEFIK_LIVEKIT_HOST|" "$ENV_FILE"
+        $SED_INPLACE "s|^TRAEFIK_CERTRESOLVER=.*|TRAEFIK_CERTRESOLVER=$TRAEFIK_CERTRESOLVER|" "$ENV_FILE"
+        # When using Traefik, LiveKit URL uses the Traefik host
+        $SED_INPLACE "s|^NEXT_PUBLIC_LIVEKIT_URL=.*|NEXT_PUBLIC_LIVEKIT_URL=wss://$TRAEFIK_LIVEKIT_HOST|" "$ENV_FILE"
+        $SED_INPLACE "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=https://$TRAEFIK_HOST|" "$ENV_FILE"
+    else
+        $SED_INPLACE "s|^NEXT_PUBLIC_LIVEKIT_URL=.*|NEXT_PUBLIC_LIVEKIT_URL=wss://$DOMAIN:7880|" "$ENV_FILE"
+        $SED_INPLACE "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=https://$DOMAIN|" "$ENV_FILE"
+    fi
 
     log_success "Configuration updated in $ENV_FILE"
 
@@ -162,6 +197,14 @@ init_config() {
     echo "  LiveKit API key: $LIVEKIT_API_KEY"
     echo "  LiveKit API secret: $LIVEKIT_API_SECRET"
     echo ""
+    if [ "$USE_TRAEFIK" = "true" ]; then
+        echo "Traefik configuration:"
+        echo "  App host:     $TRAEFIK_HOST"
+        echo "  LiveKit host: $TRAEFIK_LIVEKIT_HOST"
+        echo "  Cert resolver: $TRAEFIK_CERTRESOLVER"
+        echo ""
+        log_info "Make sure Traefik network 'traefik' exists before starting"
+    fi
     log_warn "Save these credentials securely! They are stored in $ENV_FILE"
     echo ""
 }
@@ -208,10 +251,17 @@ generate_livekit_configs() {
 # -----------------------------------------------------------------------------
 
 docker_compose() {
+    local compose_files="-f $COMPOSE_FILE"
+
+    # Add Traefik override if enabled
+    if [ "${USE_TRAEFIK:-false}" = "true" ] && [ -f "$TRAEFIK_COMPOSE_FILE" ]; then
+        compose_files="$compose_files -f $TRAEFIK_COMPOSE_FILE"
+    fi
+
     if docker compose version &> /dev/null; then
-        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+        docker compose $compose_files --env-file "$ENV_FILE" "$@"
     else
-        docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+        docker-compose $compose_files --env-file "$ENV_FILE" "$@"
     fi
 }
 
@@ -269,11 +319,22 @@ show_status() {
         echo "  Application: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}"
         echo "  LiveKit WS:  ${NEXT_PUBLIC_LIVEKIT_URL:-ws://localhost:7880}"
         echo ""
+        echo "=== Proxy Configuration ==="
+        echo ""
+        if [ "${USE_TRAEFIK:-false}" = "true" ]; then
+            echo "  Traefik:      ENABLED"
+            echo "  App Host:     ${TRAEFIK_HOST:-not set}"
+            echo "  LiveKit Host: ${TRAEFIK_LIVEKIT_HOST:-not set}"
+            echo "  Cert Resolver: ${TRAEFIK_CERTRESOLVER:-le}"
+        else
+            echo "  Traefik:      DISABLED (direct port exposure)"
+        fi
+        echo ""
         echo "=== Security Status ==="
         echo ""
-        echo "  PostgreSQL: Internal only (not exposed)"
-        echo "  Redis:      Internal only (not exposed)"
-        echo "  MinIO:      Internal only (not exposed)"
+        echo "  PostgreSQL:  Internal only (not exposed)"
+        echo "  Redis:       Internal only (not exposed)"
+        echo "  MinIO:       Internal only (not exposed)"
         echo "  Transcriber: Internal only (not exposed)"
         echo ""
     fi
@@ -306,27 +367,63 @@ run_migrations() {
 # Main
 # -----------------------------------------------------------------------------
 
+enable_traefik() {
+    if [ ! -f "$ENV_FILE" ]; then
+        log_error "Configuration not found. Run --init first."
+        exit 1
+    fi
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        SED_INPLACE="sed -i ''"
+    else
+        SED_INPLACE="sed -i"
+    fi
+
+    $SED_INPLACE "s|^USE_TRAEFIK=.*|USE_TRAEFIK=true|" "$ENV_FILE"
+    log_success "Traefik enabled. Run --restart to apply changes."
+    log_info "Make sure TRAEFIK_HOST and TRAEFIK_LIVEKIT_HOST are configured in $ENV_FILE"
+}
+
+disable_traefik() {
+    if [ ! -f "$ENV_FILE" ]; then
+        log_error "Configuration not found. Run --init first."
+        exit 1
+    fi
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        SED_INPLACE="sed -i ''"
+    else
+        SED_INPLACE="sed -i"
+    fi
+
+    $SED_INPLACE "s|^USE_TRAEFIK=.*|USE_TRAEFIK=false|" "$ENV_FILE"
+    log_success "Traefik disabled. Run --restart to apply changes."
+}
+
 show_help() {
     echo "TinkerVoid Production Deployment Script"
     echo ""
     echo "Usage: ./scripts/deploy.sh [command]"
     echo ""
     echo "Commands:"
-    echo "  (no args)    Interactive setup and deploy"
-    echo "  --init       Initialize configuration (generate passwords)"
-    echo "  --start      Start all services"
-    echo "  --stop       Stop all services"
-    echo "  --restart    Restart all services"
-    echo "  --logs [svc] View logs (optionally for specific service)"
-    echo "  --status     Check service status"
-    echo "  --update     Pull latest and restart"
-    echo "  --migrate    Run database migrations"
-    echo "  --help       Show this help"
+    echo "  (no args)       Interactive setup and deploy"
+    echo "  --init          Initialize configuration (generate passwords)"
+    echo "  --start         Start all services"
+    echo "  --stop          Stop all services"
+    echo "  --restart       Restart all services"
+    echo "  --logs [svc]    View logs (optionally for specific service)"
+    echo "  --status        Check service status"
+    echo "  --update        Pull latest and restart"
+    echo "  --migrate       Run database migrations"
+    echo "  --traefik-on    Enable Traefik reverse proxy"
+    echo "  --traefik-off   Disable Traefik reverse proxy"
+    echo "  --help          Show this help"
     echo ""
     echo "Examples:"
-    echo "  ./scripts/deploy.sh --init     # First-time setup"
-    echo "  ./scripts/deploy.sh --start    # Start services"
-    echo "  ./scripts/deploy.sh --logs app # View app logs"
+    echo "  ./scripts/deploy.sh --init        # First-time setup"
+    echo "  ./scripts/deploy.sh --start       # Start services"
+    echo "  ./scripts/deploy.sh --logs app    # View app logs"
+    echo "  ./scripts/deploy.sh --traefik-on  # Enable Traefik integration"
     echo ""
 }
 
@@ -357,6 +454,12 @@ main() {
             ;;
         --migrate)
             run_migrations
+            ;;
+        --traefik-on)
+            enable_traefik
+            ;;
+        --traefik-off)
+            disable_traefik
             ;;
         --help|-h)
             show_help
