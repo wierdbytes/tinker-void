@@ -9,10 +9,12 @@ datasource db {
 
 model Room {
   id        String    @id @default(cuid())
+  secretId  String    @unique
   name      String
   createdAt DateTime  @default(now())
   meetings  Meeting[]
 
+  @@index([secretId])
   @@map("rooms")
 }
 

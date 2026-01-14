@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { customAlphabet } from 'nanoid'
 import { prisma } from '@/lib/prisma'
+
+// 12-char alphanumeric secretId (62^12 = 3.2×10²¹ combinations)
+const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+const generateSecretId = customAlphabet(alphabet, 12)
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,8 +17,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const secretId = generateSecretId()
+
     const room = await prisma.room.create({
-      data: { name },
+      data: { name, secretId },
     })
 
     // Create a new meeting for this room
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({
-      id: room.id,
+      secretId: room.secretId,
       name: room.name,
       meetingId: meeting.id,
     })
@@ -37,24 +44,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    const rooms = await prisma.room.findMany({
-      include: {
-        meetings: {
-          orderBy: { startedAt: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    return NextResponse.json(rooms)
-  } catch (error) {
-    console.error('Failed to fetch rooms:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch rooms' },
-      { status: 500 }
-    )
-  }
-}
+// GET handler removed - no public room listing

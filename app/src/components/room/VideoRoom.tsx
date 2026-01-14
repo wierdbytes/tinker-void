@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { AudioSettings } from '@/components/audio'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings, Waves, Monitor, MonitorOff } from 'lucide-react'
+import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings, Waves, Monitor, MonitorOff, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface VideoRoomProps {
@@ -25,6 +25,7 @@ interface VideoRoomProps {
   roomId: string
   participantName: string
   onLeave: () => void
+  secretId?: string
   audioInputDeviceId?: string
   audioOutputDeviceId?: string
 }
@@ -35,6 +36,7 @@ export function VideoRoom({
   roomId,
   participantName,
   onLeave,
+  secretId,
   audioInputDeviceId,
   audioOutputDeviceId,
 }: VideoRoomProps) {
@@ -58,7 +60,7 @@ export function VideoRoom({
       options={roomOptions}
       className="h-full"
     >
-      <RoomContent roomId={roomId} participantName={participantName} onLeave={onLeave} />
+      <RoomContent roomId={roomId} participantName={participantName} onLeave={onLeave} secretId={secretId} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   )
@@ -68,9 +70,10 @@ interface RoomContentProps {
   roomId: string
   participantName: string
   onLeave: () => void
+  secretId?: string
 }
 
-function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
+function RoomContent({ roomId, participantName, onLeave, secretId }: RoomContentProps) {
   const room = useRoomContext()
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant()
   const participants = useParticipants()
@@ -94,11 +97,13 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
   }, [localParticipant, isMuted])
 
   const copyRoomLink = useCallback(() => {
-    const url = `${window.location.origin}/room/${roomId}`
+    const url = secretId
+      ? `${window.location.origin}/s/${secretId}`
+      : `${window.location.origin}/room/${roomId}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [roomId])
+  }, [secretId, roomId])
 
   const toggleScreenShare = useCallback(async () => {
     if (localParticipant) {
@@ -146,6 +151,17 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
             <Users className="w-4 h-4" />
             <span className="text-sm font-medium">{participants.length}</span>
           </div>
+          {secretId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(`/s/${secretId}/history`, '_blank')}
+              className="h-8 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <History className="w-3 h-3 mr-1.5" />
+              История
+            </Button>
+          )}
           <ThemeToggle />
         </div>
       </header>

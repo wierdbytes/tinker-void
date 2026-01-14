@@ -8,9 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Mic, Users, History, Settings, ChevronDown, ArrowRight } from 'lucide-react'
+import { Users, Settings, ChevronDown, ArrowRight } from 'lucide-react'
 
 interface AudioDevices {
   audioInputDeviceId: string
@@ -33,7 +32,6 @@ export default function HomePage() {
   const router = useRouter()
   const [roomName, setRoomName] = useState('')
   const [userName, setUserName] = useState('')
-  const [roomId, setRoomId] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [audioDevices, setAudioDevices] = useState<AudioDevices>({
     audioInputDeviceId: '',
@@ -56,19 +54,14 @@ export default function HomePage() {
       })
       const data = await res.json()
 
-      if (data.id) {
-        router.push(`/room/${data.id}?name=${encodeURIComponent(userName)}`)
+      if (data.secretId) {
+        router.push(`/s/${data.secretId}?name=${encodeURIComponent(userName)}`)
       }
     } catch (error) {
       console.error('Failed to create room:', error)
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const joinRoom = () => {
-    if (!roomId.trim() || !userName.trim()) return
-    router.push(`/room/${roomId}?name=${encodeURIComponent(userName)}`)
   }
 
   return (
@@ -82,15 +75,6 @@ export default function HomePage() {
       {/* Header */}
       <header className="relative z-10 px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-end gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/meetings')}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <History className="w-4 h-4 mr-2" />
-            История
-          </Button>
           <ThemeToggle />
         </div>
       </header>
@@ -113,133 +97,60 @@ export default function HomePage() {
 
           {/* Main card */}
           <Card className="shadow-soft-lg border-border/50 fade-in-up fade-in-delay-1">
-            <CardContent className="p-6">
-              <Tabs defaultValue="create" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6 bg-surface-secondary p-1 rounded-lg">
-                  <TabsTrigger
-                    value="create"
-                    className="rounded-md data-[state=active]:bg-card data-[state=active]:shadow-soft"
-                  >
-                    Создать
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="join"
-                    className="rounded-md data-[state=active]:bg-card data-[state=active]:shadow-soft"
-                  >
-                    Присоединиться
-                  </TabsTrigger>
-                </TabsList>
+            <CardContent className="p-6 space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="userName" className="text-sm font-medium">
+                  Ваше имя
+                </Label>
+                <Input
+                  id="userName"
+                  placeholder="Как вас называть?"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="roomName" className="text-sm font-medium">
+                  Название встречи
+                </Label>
+                <Input
+                  id="roomName"
+                  placeholder="Например: Дейли стендап"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && createRoom()}
+                  className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
+                />
+              </div>
 
-                <TabsContent value="create" className="space-y-5 mt-0">
-                  <div className="space-y-2">
-                    <Label htmlFor="userName" className="text-sm font-medium">
-                      Ваше имя
-                    </Label>
-                    <Input
-                      id="userName"
-                      placeholder="Как вас называть?"
-                      value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
-                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="roomName" className="text-sm font-medium">
-                      Название встречи
-                    </Label>
-                    <Input
-                      id="roomName"
-                      placeholder="Например: Дейли стендап"
-                      value={roomName}
-                      onChange={(e) => setRoomName(e.target.value)}
-                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
-                    />
-                  </div>
-
-                  <Collapsible>
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
-                      >
-                        <span className="flex items-center gap-2 text-sm">
-                          <Settings className="w-4 h-4" />
-                          Настройки аудио
-                        </span>
-                        <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-3">
-                      <AudioSettings onDevicesChange={handleDevicesChange} />
-                    </CollapsibleContent>
-                  </Collapsible>
-
+              <Collapsible>
+                <CollapsibleTrigger asChild>
                   <Button
-                    className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
-                    onClick={createRoom}
-                    disabled={!roomName.trim() || !userName.trim() || isLoading}
+                    variant="ghost"
+                    className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
                   >
-                    <Users className="w-4 h-4 mr-2" />
-                    {isLoading ? 'Создание...' : 'Создать комнату'}
-                    {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+                    <span className="flex items-center gap-2 text-sm">
+                      <Settings className="w-4 h-4" />
+                      Настройки аудио
+                    </span>
+                    <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
                   </Button>
-                </TabsContent>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                  <AudioSettings onDevicesChange={handleDevicesChange} />
+                </CollapsibleContent>
+              </Collapsible>
 
-                <TabsContent value="join" className="space-y-5 mt-0">
-                  <div className="space-y-2">
-                    <Label htmlFor="joinUserName" className="text-sm font-medium">
-                      Ваше имя
-                    </Label>
-                    <Input
-                      id="joinUserName"
-                      placeholder="Как вас называть?"
-                      value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
-                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="roomId" className="text-sm font-medium">
-                      ID комнаты
-                    </Label>
-                    <Input
-                      id="roomId"
-                      placeholder="Вставьте ID или ссылку"
-                      value={roomId}
-                      onChange={(e) => setRoomId(e.target.value)}
-                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors font-mono text-sm"
-                    />
-                  </div>
-
-                  <Collapsible>
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
-                      >
-                        <span className="flex items-center gap-2 text-sm">
-                          <Settings className="w-4 h-4" />
-                          Настройки аудио
-                        </span>
-                        <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-3">
-                      <AudioSettings onDevicesChange={handleDevicesChange} />
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  <Button
-                    className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
-                    onClick={joinRoom}
-                    disabled={!roomId.trim() || !userName.trim()}
-                  >
-                    <Mic className="w-4 h-4 mr-2" />
-                    Присоединиться
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </TabsContent>
-              </Tabs>
+              <Button
+                className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
+                onClick={createRoom}
+                disabled={!roomName.trim() || !userName.trim() || isLoading}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                {isLoading ? 'Создание...' : 'Создать встречу'}
+                {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+              </Button>
             </CardContent>
           </Card>
         </div>

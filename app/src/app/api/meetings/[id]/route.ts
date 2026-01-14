@@ -3,11 +3,18 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
+    const secretId = request.nextUrl.searchParams.get('secretId')
+
+    if (!secretId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const meeting = await prisma.meeting.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         room: true,
         participants: true,
@@ -23,6 +30,11 @@ export async function GET(
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
+    }
+
+    // Verify secretId matches the room
+    if (meeting.room.secretId !== secretId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     return NextResponse.json(meeting)

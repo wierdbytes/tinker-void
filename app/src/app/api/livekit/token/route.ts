@@ -5,18 +5,18 @@ import { nanoid } from 'nanoid'
 
 export async function POST(request: NextRequest) {
   try {
-    const { roomId, participantName } = await request.json()
+    const { secretId, participantName } = await request.json()
 
-    if (!roomId || !participantName) {
+    if (!secretId || !participantName) {
       return NextResponse.json(
-        { error: 'Room ID and participant name are required' },
+        { error: 'Secret ID and participant name are required' },
         { status: 400 }
       )
     }
 
-    // Verify room exists
+    // Find room by secretId
     const room = await prisma.room.findUnique({
-      where: { id: roomId },
+      where: { secretId },
       include: {
         meetings: {
           where: { status: 'IN_PROGRESS' },
@@ -56,14 +56,15 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Generate LiveKit token
-    const token = await createToken(roomId, participantName, participantIdentity)
+    // Generate LiveKit token using internal room.id (for webhook compatibility)
+    const token = await createToken(room.id, participantName, participantIdentity)
 
     return NextResponse.json({
       token,
-      roomName: roomId,
+      roomName: room.id,  // Internal ID for LiveKit
       participantIdentity,
       meetingId: meeting.id,
+      roomDisplayName: room.name,  // For UI display
     })
   } catch (error) {
     console.error('Failed to generate token:', error)
