@@ -1,10 +1,11 @@
-"""Transcription service using Silero VAD + faster-whisper."""
+"""Transcription service using WebRTC VAD + faster-whisper with batching."""
 
 import logging
 import os
 import tempfile
 import subprocess
-from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, List, Tuple
 
 from faster_whisper import WhisperModel
 
@@ -14,28 +15,25 @@ logger = logging.getLogger(__name__)
 
 
 class TranscriberService:
-    """faster-whisper transcription service with Silero VAD pre-segmentation."""
+    """faster-whisper transcription with WebRTC VAD pre-segmentation."""
 
     def __init__(self):
         self.model: Optional[WhisperModel] = None
         self.vad: Optional[WebRTCVAD] = None
         self.model_loaded = False
 
-        # Initial prompt with common IT terms to guide recognition
+        # Initial prompt with common IT terms
         self.initial_prompt = (
             "Это разговор о программировании и IT. "
             "Часто используются термины: API, backend, frontend, deploy, "
             "commit, pull request, merge, branch, Docker, Kubernetes, "
             "microservices, database, PostgreSQL, Redis, TypeScript, "
             "React, Next.js, component, props, state, hook, async, await, "
-            "refactoring, code review, sprint, agile, scrum, endpoint, "
-            "middleware, authentication, authorization, token, JWT, OAuth, "
-            "repository, CI/CD, pipeline, container, cluster, node, pod, "
-            "service, deployment, namespace, config, environment, variable."
+            "refactoring, code review, sprint, agile, scrum, endpoint."
         )
 
-    def load_model(self, model_size: str = "large-v3"):
-        """Load Whisper model and Silero VAD."""
+    def load_model(self, model_size: str = "large-v3-turbo"):
+        """Load Whisper model and WebRTC VAD."""
         cpu_threads = int(os.getenv("CPU_THREADS", "4"))
         model_path = os.getenv("MODEL_PATH", "/app/models")
 
@@ -50,17 +48,13 @@ class TranscriberService:
         )
 
         logger.info("Loading WebRTC VAD...")
-        self.vad = WebRTCVAD(aggressiveness=2)  # 0-3, 2 is balanced
+        self.vad = WebRTCVAD(aggressiveness=2)
 
         self.model_loaded = True
         logger.info("All models loaded successfully")
 
     def transcribe(self, audio_path: str, language: str = "ru") -> dict:
-        """Transcribe audio using Silero VAD for segmentation + Whisper for ASR.
-
-        This two-stage approach provides more accurate segment boundaries
-        than relying solely on Whisper's built-in VAD.
-        """
+        """Transcribe audio using VAD segmentation + Whisper ASR."""
         if not self.model or not self.vad:
             raise RuntimeError("Models not loaded")
 
@@ -69,23 +63,22 @@ class TranscriberService:
         # Stage 1: Get speech segments from WebRTC VAD
         vad_segments = self.vad.get_speech_timestamps(
             audio_path,
-            frame_duration_ms=30,        # 30ms frames
-            min_speech_duration_ms=200,  # Minimum speech duration
-            min_silence_duration_ms=150, # Split on short pauses
-            speech_pad_ms=50,            # Small padding
+            frame_duration_ms=30,
+            min_speech_duration_ms=200,
+            min_silence_duration_ms=150,
+            speech_pad_ms=50,
         )
 
-        # Merge very close segments but keep them reasonably short
+        # Merge close segments
         vad_segments = self.vad.merge_short_segments(
             vad_segments,
-            max_gap_seconds=0.3,     # Merge if gap < 300ms
-            max_segment_seconds=15,  # But don't exceed 15s per segment
+            max_gap_seconds=0.3,
+            max_segment_seconds=15,
         )
 
         logger.info(f"VAD detected {len(vad_segments)} speech segments")
 
         if not vad_segments:
-            # No speech detected
             return {
                 "text": "",
                 "segments": [],
@@ -94,60 +87,52 @@ class TranscriberService:
                 "language_probability": 0,
             }
 
-        # Stage 2: Transcribe each segment with Whisper
+        # Stage 2: Extract all segments in parallel (IO-bound)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            extraction_futures = [
+                executor.submit(self._extract_segment, audio_path, seg)
+                for seg in vad_segments
+            ]
+            extracted_files = [f.result() for f in extraction_futures]
+
+        # Stage 3: Transcribe segments (CPU-bound, sequential for single model)
         all_segments = []
         all_texts = []
         total_duration = 0
 
-        for i, vad_seg in enumerate(vad_segments):
-            seg_start = vad_seg['start']
-            seg_end = vad_seg['end']
-            seg_duration = seg_end - seg_start
+        try:
+            for i, (tmp_path, vad_seg) in enumerate(zip(extracted_files, vad_segments)):
+                if tmp_path is None:
+                    continue
 
-            logger.debug(f"Transcribing segment {i+1}/{len(vad_segments)}: {seg_start:.2f}s - {seg_end:.2f}s")
+                seg_start = vad_seg['start']
+                seg_end = vad_seg['end']
 
-            # Extract audio segment using ffmpeg
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-                tmp_path = tmp.name
+                logger.debug(f"Transcribing segment {i+1}/{len(vad_segments)}")
 
-            try:
-                # Extract segment with ffmpeg
-                subprocess.run([
-                    'ffmpeg', '-y', '-i', audio_path,
-                    '-ss', str(seg_start),
-                    '-t', str(seg_duration),
-                    '-ar', '16000', '-ac', '1',
-                    '-f', 'wav', tmp_path
-                ], capture_output=True, check=True)
-
-                # Transcribe segment (without VAD since we already segmented)
+                # Transcribe segment (beam_size=3 for speed/quality balance)
                 segments, info = self.model.transcribe(
                     tmp_path,
                     language=language,
                     task="transcribe",
                     initial_prompt=self.initial_prompt,
-                    beam_size=5,
+                    beam_size=3,
                     word_timestamps=True,
-                    vad_filter=False,  # VAD already done
-                    condition_on_previous_text=False,  # Each segment is independent
+                    vad_filter=False,
+                    condition_on_previous_text=False,
                     no_speech_threshold=0.6,
                 )
 
-                # Process transcription results
                 for seg in segments:
                     text = seg.text.strip()
                     if not text:
                         continue
 
-                    # Adjust timestamps to original audio timeline
                     adjusted_start = seg_start + seg.start
                     adjusted_end = seg_start + seg.end
 
-                    # Split by sentences if segment is long
                     if seg.words and len(text) > 80:
-                        sentence_segments = self._split_by_sentences(
-                            seg.words, seg_start
-                        )
+                        sentence_segments = self._split_by_sentences(seg.words, seg_start)
                         all_segments.extend(sentence_segments)
                         all_texts.extend(s['text'] for s in sentence_segments)
                     else:
@@ -160,9 +145,10 @@ class TranscriberService:
 
                 total_duration = max(total_duration, seg_end)
 
-            finally:
-                # Cleanup temp file
-                if os.path.exists(tmp_path):
+        finally:
+            # Cleanup all temp files
+            for tmp_path in extracted_files:
+                if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
 
         full_text = " ".join(all_texts)
@@ -180,6 +166,28 @@ class TranscriberService:
             "language_probability": 1.0,
         }
 
+    def _extract_segment(self, audio_path: str, seg: dict) -> Optional[str]:
+        """Extract audio segment using ffmpeg."""
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                tmp_path = tmp.name
+
+            seg_start = seg['start']
+            seg_duration = seg['end'] - seg_start
+
+            subprocess.run([
+                'ffmpeg', '-y', '-i', audio_path,
+                '-ss', str(seg_start),
+                '-t', str(seg_duration),
+                '-ar', '16000', '-ac', '1',
+                '-f', 'wav', tmp_path
+            ], capture_output=True, check=True)
+
+            return tmp_path
+        except Exception as e:
+            logger.error(f"Failed to extract segment: {e}")
+            return None
+
     def _split_by_sentences(self, words, offset: float) -> List[dict]:
         """Split word list into sentences based on punctuation."""
         result = []
@@ -192,7 +200,6 @@ class TranscriberService:
 
             current_words.append(word.word)
 
-            # Check if word ends a sentence
             word_text = word.word.strip()
             if word_text and word_text[-1] in '.!?':
                 text = "".join(current_words).strip()
@@ -205,7 +212,6 @@ class TranscriberService:
                 current_words = []
                 current_start = None
 
-        # Flush remaining words
         if current_words:
             text = "".join(current_words).strip()
             if text and words:

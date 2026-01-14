@@ -4,8 +4,8 @@ FROM python:3.11-slim AS model-downloader
 # Install faster-whisper for model download
 RUN pip install --no-cache-dir faster-whisper
 
-# Pre-download the large-v3 Whisper model (INT8 quantized)
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8', download_root='/models')"
+# Pre-download the large-v3-turbo Whisper model (INT8 quantized, 8x faster)
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8', download_root='/models')"
 
 # Stage 2: Build Python dependencies
 FROM python:3.11-slim AS builder
