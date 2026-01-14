@@ -85,8 +85,16 @@ class TranscriberService:
                 all_segments.extend(sentence_segments)
                 all_texts.extend(s['text'] for s in sentence_segments)
             else:
+                # Calculate start time based on gap between first two words
+                start_time = seg.start
+                if seg.words:
+                    first_start = seg.words[0].start if len(seg.words) >= 1 else None
+                    second_start = seg.words[1].start if len(seg.words) >= 2 else None
+                    if first_start is not None:
+                        start_time = self._get_sentence_start_time(first_start, second_start)
+
                 all_segments.append({
-                    "start": round(seg.start, 3),
+                    "start": round(start_time, 3),
                     "end": round(seg.end, 3),
                     "text": text,
                 })
@@ -107,37 +115,60 @@ class TranscriberService:
             "language_probability": info.language_probability,
         }
 
+    def _get_sentence_start_time(self, first_word_start: float, second_word_start: float | None) -> float:
+        """Calculate sentence start time based on gap between first two words.
+
+        If gap > 2 seconds: first word was likely detected too early, use second word - 0.5s
+        If gap <= 2 seconds: timing is normal, use first word's time
+        """
+        if second_word_start is None:
+            return first_word_start
+
+        gap = second_word_start - first_word_start
+        if gap > 2.0:
+            return max(0, second_word_start - 0.5)
+        return first_word_start
+
     def _split_by_sentences(self, words) -> List[dict]:
         """Split word list into sentences based on punctuation."""
         result = []
         current_words = []
-        current_start = None
+        first_word_start = None
+        second_word_start = None
+        word_count = 0
 
         for word in words:
-            if current_start is None:
-                current_start = word.start
-
             current_words.append(word.word)
+            word_count += 1
+
+            if word_count == 1:
+                first_word_start = word.start
+            elif word_count == 2:
+                second_word_start = word.start
 
             # End sentence on punctuation
             word_text = word.word.strip()
             if word_text and word_text[-1] in '.!?':
                 text = "".join(current_words).strip()
                 if text:
+                    start_time = self._get_sentence_start_time(first_word_start, second_word_start)
                     result.append({
-                        "start": round(current_start, 3),
+                        "start": round(start_time, 3),
                         "end": round(word.end, 3),
                         "text": text,
                     })
                 current_words = []
-                current_start = None
+                first_word_start = None
+                second_word_start = None
+                word_count = 0
 
         # Flush remaining words
         if current_words:
             text = "".join(current_words).strip()
-            if text and words:
+            if text and first_word_start is not None:
+                start_time = self._get_sentence_start_time(first_word_start, second_word_start)
                 result.append({
-                    "start": round(current_start, 3),
+                    "start": round(start_time, 3),
                     "end": round(words[-1].end, 3),
                     "text": text,
                 })
