@@ -151,6 +151,7 @@ init_config() {
     LIVEKIT_API_KEY=$(generate_api_key)
     LIVEKIT_API_SECRET=$(generate_password 40)
     LIVEKIT_WEBHOOK_SECRET="whsec_$(generate_password 24)"
+    ADMIN_SECRET_KEY=$(generate_password 48)
 
     # Update .env.prod
     log_info "Updating configuration..."
@@ -168,6 +169,7 @@ init_config() {
     $SED_INPLACE "s|^LIVEKIT_API_KEY=.*|LIVEKIT_API_KEY=$LIVEKIT_API_KEY|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_API_SECRET=.*|LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_WEBHOOK_SECRET=.*|LIVEKIT_WEBHOOK_SECRET=$LIVEKIT_WEBHOOK_SECRET|" "$ENV_FILE"
+    $SED_INPLACE "s|^ADMIN_SECRET_KEY=.*|ADMIN_SECRET_KEY=$ADMIN_SECRET_KEY|" "$ENV_FILE"
 
     # Update Traefik settings
     $SED_INPLACE "s|^USE_TRAEFIK=.*|USE_TRAEFIK=$USE_TRAEFIK|" "$ENV_FILE"
@@ -196,6 +198,9 @@ init_config() {
     echo "  MinIO password: $MINIO_PASSWORD"
     echo "  LiveKit API key: $LIVEKIT_API_KEY"
     echo "  LiveKit API secret: $LIVEKIT_API_SECRET"
+    echo ""
+    echo "Admin panel (/void):"
+    echo "  Secret key: $ADMIN_SECRET_KEY"
     echo ""
     if [ "$USE_TRAEFIK" = "true" ]; then
         echo "Traefik configuration:"
@@ -367,6 +372,15 @@ show_status() {
         echo "  Redis:       Internal only (not exposed)"
         echo "  MinIO:       Internal only (not exposed)"
         echo "  Transcriber: Internal only (not exposed)"
+        echo ""
+        echo "=== Admin Panel ==="
+        echo ""
+        echo "  URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}/void"
+        if [ -n "${ADMIN_SECRET_KEY:-}" ]; then
+            echo "  Status: Configured (key set)"
+        else
+            echo "  Status: NOT CONFIGURED (ADMIN_SECRET_KEY missing)"
+        fi
         echo ""
     fi
 }
