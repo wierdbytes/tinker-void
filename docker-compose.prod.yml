@@ -83,6 +83,26 @@ services:
     networks:
       - tinkervoid-internal
 
+  # RabbitMQ for async task queue - NO EXTERNAL PORT
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: tinkervoid-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-tinkervoid}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    # NO ports exposed - only accessible within Docker network
+    # Management UI available internally at http://rabbitmq:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tinkervoid-internal
+
   # LiveKit Server - EXTERNAL PORTS (required for WebRTC)
   livekit:
     image: livekit/livekit-server:v1.9.8
@@ -132,6 +152,8 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET:-recordings}
       - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-tinkervoid}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - CALLBACK_BASE_URL=http://app:3000
       - MODEL_SIZE=${WHISPER_MODEL_SIZE:-large-v3}
       - MODEL_PATH=/app/models
       - CPU_THREADS=${TRANSCRIBER_CPU_THREADS:-4}
@@ -143,6 +165,8 @@ services:
       minio:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     deploy:
       resources:
@@ -173,7 +197,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET:-recordings}
-      - TRANSCRIBER_URL=http://transcriber:8000
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-tinkervoid}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       - REDIS_URL=redis://redis:6379
       - NEXT_PUBLIC_LIVEKIT_URL=${NEXT_PUBLIC_LIVEKIT_URL}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
@@ -187,6 +211,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       livekit:
         condition: service_started
     networks:
@@ -196,6 +222,7 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  rabbitmq_data:
 
 networks:
   tinkervoid-internal:

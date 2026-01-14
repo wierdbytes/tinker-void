@@ -75,6 +75,26 @@ services:
     networks:
       - tinkervoid-network
 
+  # RabbitMQ for async task queue
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: tinkervoid-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: tinkervoid
+      RABBITMQ_DEFAULT_PASS: tinkervoid_secret
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tinkervoid-network
+
   # LiveKit Server
   livekit:
     image: livekit/livekit-server:v1.9.8
@@ -121,6 +141,8 @@ services:
       - MINIO_SECRET_KEY=minioadmin123
       - MINIO_BUCKET=recordings
       - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://tinkervoid:tinkervoid_secret@rabbitmq:5672/
+      - CALLBACK_BASE_URL=http://app:3000
       - MODEL_SIZE=large-v3
       - MODEL_PATH=/app/models
       - CPU_THREADS=4
@@ -133,6 +155,8 @@ services:
       minio:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     # No GPU required - runs on CPU (Apple Silicon compatible)
     deploy:
@@ -190,7 +214,7 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin123
       - MINIO_BUCKET=recordings
-      - TRANSCRIBER_URL=http://transcriber:8000
+      - RABBITMQ_URL=amqp://tinkervoid:tinkervoid_secret@rabbitmq:5672/
       - REDIS_URL=redis://redis:6379
     ports:
       - "3000:3000"
@@ -201,6 +225,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       livekit:
         condition: service_started
     networks:
@@ -210,6 +236,7 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  rabbitmq_data:
 
 networks:
   tinkervoid-network:

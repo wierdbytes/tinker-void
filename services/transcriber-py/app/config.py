@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379"
 
+    # RabbitMQ
+    rabbitmq_url: str = "amqp://tinkervoid:tinkervoid_secret@rabbitmq:5672/"
+    callback_base_url: str = "http://app:3000"
+    callback_timeout: int = 30
+
     # Model settings
     model_size: str = "large-v3"
     model_path: str = "/app/models"

@@ -148,6 +148,7 @@ init_config() {
     log_info "Generating secure passwords..."
     POSTGRES_PASSWORD=$(generate_password 32)
     MINIO_PASSWORD=$(generate_password 32)
+    RABBITMQ_PASSWORD=$(generate_password 32)
     LIVEKIT_API_KEY=$(generate_api_key)
     LIVEKIT_API_SECRET=$(generate_password 40)
     LIVEKIT_WEBHOOK_SECRET="whsec_$(generate_password 24)"
@@ -166,6 +167,7 @@ init_config() {
     $SED_INPLACE "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" "$ENV_FILE"
     $SED_INPLACE "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" "$ENV_FILE"
     $SED_INPLACE "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=$MINIO_PASSWORD|" "$ENV_FILE"
+    $SED_INPLACE "s|^RABBITMQ_PASSWORD=.*|RABBITMQ_PASSWORD=$RABBITMQ_PASSWORD|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_API_KEY=.*|LIVEKIT_API_KEY=$LIVEKIT_API_KEY|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_API_SECRET=.*|LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET|" "$ENV_FILE"
     $SED_INPLACE "s|^LIVEKIT_WEBHOOK_SECRET=.*|LIVEKIT_WEBHOOK_SECRET=$LIVEKIT_WEBHOOK_SECRET|" "$ENV_FILE"
@@ -196,6 +198,7 @@ init_config() {
     echo "Generated credentials (saved in $ENV_FILE):"
     echo "  PostgreSQL password: $POSTGRES_PASSWORD"
     echo "  MinIO password: $MINIO_PASSWORD"
+    echo "  RabbitMQ password: $RABBITMQ_PASSWORD"
     echo "  LiveKit API key: $LIVEKIT_API_KEY"
     echo "  LiveKit API secret: $LIVEKIT_API_SECRET"
     echo ""
@@ -271,6 +274,25 @@ wait_for_postgres() {
     done
 
     log_error "Database did not become ready in time"
+    return 1
+}
+
+wait_for_rabbitmq() {
+    log_info "Waiting for RabbitMQ to be ready..."
+    local retries=30
+    local interval=5
+
+    while [ $retries -gt 0 ]; do
+        if docker_compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; then
+            log_success "RabbitMQ is ready"
+            return 0
+        fi
+        retries=$((retries - 1))
+        log_info "RabbitMQ not ready, retrying in ${interval}s... ($retries attempts left)"
+        sleep $interval
+    done
+
+    log_error "RabbitMQ did not become ready in time"
     return 1
 }
 
@@ -370,8 +392,27 @@ show_status() {
         echo ""
         echo "  PostgreSQL:  Internal only (not exposed)"
         echo "  Redis:       Internal only (not exposed)"
+        echo "  RabbitMQ:    Internal only (not exposed)"
         echo "  MinIO:       Internal only (not exposed)"
         echo "  Transcriber: Internal only (not exposed)"
+        echo ""
+        echo "=== RabbitMQ Status ==="
+        echo ""
+        # Check RabbitMQ queue status
+        if docker_compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; then
+            echo "  Status: Running"
+            local queue_info=$(docker_compose exec -T rabbitmq rabbitmqctl list_queues name messages 2>/dev/null | grep transcription || echo "")
+            if [ -n "$queue_info" ]; then
+                echo "  Queues:"
+                echo "$queue_info" | while read -r line; do
+                    echo "    $line"
+                done
+            else
+                echo "  Queues: Not initialized yet (will be created on first task)"
+            fi
+        else
+            echo "  Status: Not running or not healthy"
+        fi
         echo ""
         echo "=== Admin Panel ==="
         echo ""

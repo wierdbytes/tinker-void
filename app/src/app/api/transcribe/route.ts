@@ -1,32 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { publishTranscriptionTask, TranscriptionTask } from '@/lib/rabbitmq'
+import { randomUUID } from 'crypto'
 
-const TRANSCRIBER_URL = process.env.TRANSCRIBER_URL || 'http://localhost:8001'
-
-// Calculate offset in seconds for a recording relative to meeting start
-// Uses recording.startedAt (from LiveKit Egress) for accurate timing
-// Falls back to parsing timestamp from filename if startedAt is not available
-function calculateRecordingOffset(
-  recordingStartedAt: Date | null,
-  fileUrl: string,
-  meetingStartedAt: Date
-): number {
-  let recordingStartMs: number
-
-  if (recordingStartedAt) {
-    // Use accurate startedAt from LiveKit Egress
-    recordingStartMs = recordingStartedAt.getTime()
-  } else {
-    // Fallback: extract timestamp from file URL (less accurate, has ~15s delay)
-    const filename = fileUrl.split('/').pop() || ''
-    const match = filename.match(/_(\d+)\.ogg$/)
-    recordingStartMs = match ? parseInt(match[1], 10) : 0
-  }
-
-  const meetingStartMs = meetingStartedAt.getTime()
-  return Math.max(0, (recordingStartMs - meetingStartMs) / 1000)
-}
-
+/**
+ * Queue transcription tasks for a meeting.
+ * Publishes tasks to RabbitMQ, results come via callback.
+ */
 export async function POST(request: NextRequest) {
   try {
     const { meetingId } = await request.json()
@@ -57,162 +37,40 @@ export async function POST(request: NextRequest) {
         where: { id: meetingId },
         data: { status: 'COMPLETED' },
       })
-      return NextResponse.json({ message: 'No recordings to transcribe' })
+      return NextResponse.json({ message: 'No recordings to transcribe', count: 0 })
     }
 
-    // Transcribe each recording
+    // Publish tasks to RabbitMQ
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const transcriptionPromises = meeting.recordings.map(async (recording: { id: string; fileUrl: string; startedAt: Date | null; participantId: string }) => {
-      try {
-        // Send relative path - transcriber has its own MinIO connection
-        console.log(`Transcribing recording ${recording.id}: ${recording.fileUrl}`)
+    const tasks: TranscriptionTask[] = []
 
-        const response = await fetch(`${TRANSCRIBER_URL}/transcribe`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file_url: recording.fileUrl,
-            recording_id: recording.id,
-            callback_url: `${baseUrl}/api/transcribe/callback`,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`Transcription failed: ${response.statusText}`)
-        }
-
-        const result = await response.json()
-
-        // Calculate offset for this recording relative to meeting start
-        const offset = calculateRecordingOffset(recording.startedAt, recording.fileUrl, meeting.startedAt)
-        console.log(`Recording ${recording.id} offset: ${offset}s (startedAt: ${recording.startedAt})`)
-
-        // Save utterances from transcription (with offset added to times)
-        if (result.segments && result.segments.length > 0) {
-          await prisma.utterance.createMany({
-            data: result.segments.map((segment: any) => ({
-              meetingId: meeting.id,
-              participantId: recording.participantId,
-              text: segment.text,
-              startTime: segment.start + offset,
-              endTime: segment.end + offset,
-            })),
-          })
-        } else if (result.text) {
-          // Single utterance if no segments
-          await prisma.utterance.create({
-            data: {
-              meetingId: meeting.id,
-              participantId: recording.participantId,
-              text: result.text,
-              startTime: offset,
-              endTime: (result.duration || 0) + offset,
-            },
-          })
-        }
-
-        // Mark recording as transcribed
-        await prisma.recording.update({
-          where: { id: recording.id },
-          data: { transcribed: true },
-        })
-
-        return { recordingId: recording.id, success: true }
-      } catch (error) {
-        console.error(`Failed to transcribe recording ${recording.id}:`, error)
-        return { recordingId: recording.id, success: false, error: String(error) }
+    for (const recording of meeting.recordings) {
+      const task: TranscriptionTask = {
+        task_id: randomUUID(),
+        recording_id: recording.id,
+        meeting_id: meetingId,
+        participant_id: recording.participantId,
+        file_url: recording.fileUrl,
+        recording_started_at: recording.startedAt?.toISOString() || null,
+        meeting_started_at: meeting.startedAt.toISOString(),
+        callback_url: `${baseUrl}/api/transcribe/callback`,
+        retry_count: 0,
       }
-    })
 
-    const results = await Promise.all(transcriptionPromises)
+      await publishTranscriptionTask(task)
+      tasks.push(task)
 
-    // Mark meeting as completed
-    await prisma.meeting.update({
-      where: { id: meetingId },
-      data: { status: 'COMPLETED' },
-    })
+      console.log(`[Transcribe] Task queued: recording_id=${recording.id} task_id=${task.task_id}`)
+    }
 
     return NextResponse.json({
-      message: 'Transcription completed',
-      results,
+      status: 'queued',
+      count: tasks.length,
+      tasks: tasks.map((t) => ({ task_id: t.task_id, recording_id: t.recording_id })),
     })
   } catch (error) {
-    console.error('Transcription error:', error)
-    return NextResponse.json({ error: 'Transcription failed' }, { status: 500 })
+    console.error('Transcription queue error:', error)
+    return NextResponse.json({ error: 'Failed to queue transcription' }, { status: 500 })
   }
 }
 
-// Callback endpoint for async transcription results
-export async function PUT(request: NextRequest) {
-  try {
-    const { recording_id, text, segments, duration } = await request.json()
-
-    if (!recording_id) {
-      return NextResponse.json({ error: 'Recording ID is required' }, { status: 400 })
-    }
-
-    // Get recording with meeting for offset calculation
-    const recording = await prisma.recording.findUnique({
-      where: { id: recording_id },
-      include: { meeting: true },
-    })
-
-    if (!recording) {
-      return NextResponse.json({ error: 'Recording not found' }, { status: 404 })
-    }
-
-    // Calculate offset for this recording relative to meeting start
-    const offset = calculateRecordingOffset(recording.startedAt, recording.fileUrl, recording.meeting.startedAt)
-    console.log(`Recording ${recording.id} offset (callback): ${offset}s (startedAt: ${recording.startedAt})`)
-
-    // Save utterances (with offset added to times)
-    if (segments && segments.length > 0) {
-      await prisma.utterance.createMany({
-        data: segments.map((segment: any) => ({
-          meetingId: recording.meetingId,
-          participantId: recording.participantId,
-          text: segment.text,
-          startTime: segment.start + offset,
-          endTime: segment.end + offset,
-        })),
-      })
-    } else if (text) {
-      await prisma.utterance.create({
-        data: {
-          meetingId: recording.meetingId,
-          participantId: recording.participantId,
-          text,
-          startTime: offset,
-          endTime: (duration || 0) + offset,
-        },
-      })
-    }
-
-    // Mark as transcribed
-    await prisma.recording.update({
-      where: { id: recording_id },
-      data: { transcribed: true },
-    })
-
-    // Check if all recordings are transcribed
-    const pendingRecordings = await prisma.recording.count({
-      where: {
-        meetingId: recording.meetingId,
-        transcribed: false,
-      },
-    })
-
-    if (pendingRecordings === 0) {
-      // All done, mark meeting as completed
-      await prisma.meeting.update({
-        where: { id: recording.meetingId },
-        data: { status: 'COMPLETED' },
-      })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Callback error:', error)
-    return NextResponse.json({ error: 'Callback processing failed' }, { status: 500 })
-  }
-}

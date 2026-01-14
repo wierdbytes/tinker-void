@@ -17,6 +17,7 @@ TinkerVoid — веб-приложение для голосовых встре�
 - **Голосовая связь:** LiveKit (self-hosted, v1.9.8)
 - **Запись:** LiveKit Egress → MinIO (S3)
 - **Транскрибация:** faster-whisper large-v3-turbo (Python, работает на CPU) — [подробнее](docs/TRANSCRIBER.md)
+- **Очередь задач:** RabbitMQ 4.x (async транскрибация)
 - **Суммаризация:** Claude API (Anthropic)
 - **Хранение файлов:** MinIO (S3-совместимое)
 - **Контейнеризация:** Docker Compose
@@ -40,9 +41,13 @@ Next.js: сохраняет Recording в БД
          ↓
 LiveKit: room_finished webhook
          ↓
-Next.js: POST /api/transcribe
+Next.js: POST /api/transcribe → publish to RabbitMQ
          ↓
-Transcriber: скачивает OGG из MinIO, конвертирует в WAV (ffmpeg), транскрибирует
+RabbitMQ: transcription.tasks queue
+         ↓
+Transcriber Consumer: скачивает OGG из MinIO, конвертирует в WAV, транскрибирует
+         ↓
+Transcriber: HTTP callback → POST /api/transcribe/callback
          ↓
 Next.js: сохраняет Utterances в БД
          ↓
@@ -72,6 +77,7 @@ tinkervoid/
 │   │   ├── components/           # React компоненты
 │   │   └── lib/
 │   │       ├── livekit.ts        # LiveKit клиент и startTrackRecording()
+│   │       ├── rabbitmq.ts       # RabbitMQ publisher для задач транскрибации
 │   │       ├── claude.ts         # Claude API клиент
 │   │       └── prisma.ts         # Prisma клиент
 │   ├── prisma/schema.prisma      # Схема БД
@@ -83,10 +89,12 @@ tinkervoid/
 │   └── transcriber-py/           # Сервис транскрибации (Python)
 │       ├── Dockerfile
 │       └── app/
-│           ├── main.py           # FastAPI HTTP сервер
+│           ├── main.py           # FastAPI HTTP сервер + RabbitMQ consumer
+│           ├── consumer.py       # RabbitMQ consumer для задач транскрибации
 │           ├── config.py         # Настройки из env
 │           └── services/
 │               ├── transcriber.py # faster-whisper + sentence splitting
+│               ├── rabbitmq.py    # RabbitMQ клиент (aio-pika)
 │               ├── storage.py     # MinIO клиент
 │               └── audio.py       # ffmpeg конвертация
 └── docker-compose.yml
@@ -102,7 +110,7 @@ tinkervoid/
 ### Запуск всех сервисов
 ```bash
 # Инфраструктура
-docker compose up -d postgres redis minio livekit livekit-egress transcriber
+docker compose up -d postgres redis rabbitmq minio livekit livekit-egress transcriber
 
 # Сделать бакет recordings публичным (обязательно!)
 docker compose exec minio mc alias set local http://localhost:9000 minioadmin minioadmin123
@@ -132,6 +140,7 @@ npm run db:studio      # GUI для БД
 docker compose logs -f livekit          # LiveKit сервер
 docker compose logs -f livekit-egress   # Egress (запись)
 docker compose logs -f transcriber      # Транскрибация
+docker compose logs -f rabbitmq         # RabbitMQ
 ```
 
 ### Production Deployment
@@ -171,8 +180,8 @@ MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin123
 MINIO_BUCKET=recordings
 
-# Transcriber
-TRANSCRIBER_URL=http://localhost:8001
+# RabbitMQ
+RABBITMQ_URL=amqp://tinkervoid:tinkervoid_secret@localhost:5672/
 
 # Claude API (ОБЯЗАТЕЛЬНО для суммаризации)
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -212,10 +221,15 @@ const durationSec = Number(durationNs) / 1_000_000_000
 
 Egress работает внутри Docker, поэтому endpoint MinIO: `http://minio:9000`
 
-### 5. Транскрибатор получает относительный путь
+### 5. Асинхронная транскрибация через RabbitMQ
 Файл: `app/src/app/api/transcribe/route.ts`
 
-Транскрибатор имеет собственное подключение к MinIO, поэтому ему отправляется только `recording.fileUrl` (относительный путь), а не полный URL.
+Next.js публикует задачи в RabbitMQ очередь `transcription.tasks`. Transcriber consumer обрабатывает задачи асинхронно и отправляет результаты через HTTP callback на `/api/transcribe/callback`.
+
+Структура очередей:
+- `transcription.tasks` — основная очередь задач
+- `transcription.retry` — повторные попытки (задержка 30 сек)
+- `transcription.dlq` — неудачные задачи для анализа
 
 ## API Endpoints
 
@@ -226,7 +240,8 @@ Egress работает внутри Docker, поэтому endpoint MinIO: `htt
 | `/api/livekit/webhook` | POST | Обработка событий LiveKit |
 | `/api/meetings` | GET | Список встреч |
 | `/api/meetings/[id]` | GET | Детали встречи |
-| `/api/transcribe` | POST | Запуск транскрибации |
+| `/api/transcribe` | POST | Постановка задач транскрибации в очередь |
+| `/api/transcribe/callback` | POST | Callback от transcriber с результатами |
 | `/api/summarize` | POST | Суммаризация через Claude |
 
 ## Схема базы данных
@@ -243,13 +258,15 @@ Egress работает внутри Docker, поэтому endpoint MinIO: `htt
 |------|--------|
 | 3000 | Next.js |
 | 5432 | PostgreSQL |
+| 5672 | RabbitMQ AMQP |
 | 6379 | Redis |
 | 7880 | LiveKit HTTP/WebSocket |
 | 7881 | LiveKit RTC (TCP) |
 | 7882 | LiveKit RTC (UDP) |
-| 8001 | Transcriber |
+| 8001 | Transcriber (health check) |
 | 9000 | MinIO API |
 | 9001 | MinIO Console |
+| 15672 | RabbitMQ Management UI |
 
 ## Известные проблемы
 
@@ -270,27 +287,31 @@ const room = new Room({
 
 **Подробная документация:** [docs/TRANSCRIBER.md](docs/TRANSCRIBER.md)
 
-**Технологии:** Python + faster-whisper + ffmpeg
+**Технологии:** Python + faster-whisper + ffmpeg + aio-pika (RabbitMQ)
 **Модель:** Whisper large-v3-turbo (INT8, ~1.5GB)
 **Формат:** Принимает любой аудиоформат (конвертирует в WAV 16kHz mono)
 
 ### Ключевые особенности
+- Асинхронная обработка через RabbitMQ consumer
 - Работает на CPU (включая Apple Silicon)
 - Производительность ~10-15x realtime
 - Разбиение на предложения по пунктуации
 - Коррекция таймингов первого слова (см. документацию)
+- Retry механизм (3 попытки с задержкой 30 сек)
+- Dead Letter Queue для неудачных задач
 
-### API
+### HTTP API
 
 | Endpoint | Метод | Описание |
 |----------|-------|----------|
-| `/health` | GET | `{"status": "healthy", "model_loaded": true}` |
-| `/transcribe` | POST | `{file_url, recording_id}` → `{text, segments, duration}` |
-| `/transcribe/batch` | POST | Асинхронная batch-транскрибация |
+| `/health` | GET | `{"status": "healthy", "model_loaded": true, "rabbitmq_connected": true}` |
 
 ### Проверка работоспособности
 ```bash
 curl http://localhost:8001/health
+
+# Проверить очередь задач
+docker exec tinkervoid-rabbitmq rabbitmqctl list_queues name messages
 ```
 
 ## Админ-панель (/void)
