@@ -109,10 +109,10 @@ services:
     networks:
       - tinkerdesk-network
 
-  # Transcriber service (Rust + Parakeet V3)
+  # Transcriber service (Python + faster-whisper)
   transcriber:
     build:
-      context: ./services/transcriber-rs
+      context: ./services/transcriber-py
       dockerfile: Dockerfile
     container_name: tinkerdesk-transcriber
     environment:
@@ -121,7 +121,12 @@ services:
       - MINIO_SECRET_KEY=minioadmin123
       - MINIO_BUCKET=recordings
       - REDIS_URL=redis://redis:6379
-      - MODEL_PATH=/app/models/parakeet-v3
+      - MODEL_SIZE=large-v3
+      - MODEL_PATH=/app/models
+      - CPU_THREADS=4
+      - DEFAULT_LANGUAGE=ru
+      - BEAM_SIZE=5
+      - VAD_FILTER=true
     ports:
       - "8001:8000"
     depends_on:
@@ -129,7 +134,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # No GPU required - runs on CPU!
+    # No GPU required - runs on CPU (Apple Silicon compatible)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
     networks:
       - tinkerdesk-network
 
