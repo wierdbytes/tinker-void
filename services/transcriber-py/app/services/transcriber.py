@@ -8,7 +8,7 @@ from typing import Optional, List
 
 from faster_whisper import WhisperModel
 
-from .vad import SileroVAD
+from .vad import WebRTCVAD
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class TranscriberService:
 
     def __init__(self):
         self.model: Optional[WhisperModel] = None
-        self.vad: Optional[SileroVAD] = None
+        self.vad: Optional[WebRTCVAD] = None
         self.model_loaded = False
 
         # Initial prompt with common IT terms to guide recognition
@@ -49,9 +49,8 @@ class TranscriberService:
             download_root=model_path,
         )
 
-        logger.info("Loading Silero VAD...")
-        self.vad = SileroVAD()
-        self.vad.load_model()
+        logger.info("Loading WebRTC VAD...")
+        self.vad = WebRTCVAD(aggressiveness=2)  # 0-3, 2 is balanced
 
         self.model_loaded = True
         logger.info("All models loaded successfully")
@@ -67,10 +66,10 @@ class TranscriberService:
 
         logger.info(f"Transcribing {audio_path}")
 
-        # Stage 1: Get speech segments from Silero VAD
+        # Stage 1: Get speech segments from WebRTC VAD
         vad_segments = self.vad.get_speech_timestamps(
             audio_path,
-            threshold=0.35,              # Sensitive detection
+            frame_duration_ms=30,        # 30ms frames
             min_speech_duration_ms=200,  # Minimum speech duration
             min_silence_duration_ms=150, # Split on short pauses
             speech_pad_ms=50,            # Small padding
