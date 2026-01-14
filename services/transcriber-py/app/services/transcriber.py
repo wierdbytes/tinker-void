@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, List
 
 from faster_whisper import WhisperModel
 
@@ -100,15 +100,24 @@ class TranscriberService:
         full_text = " ".join(seg.text.strip() for seg in segments_list)
 
         # Process segments into response format
+        # Split large segments into sentences for better conversation display
         processed_segments = []
         for seg in segments_list:
-            processed_segments.append(
-                {
-                    "start": round(seg.start, 3),
-                    "end": round(seg.end, 3),
-                    "text": seg.text.strip(),
-                }
-            )
+            text = seg.text.strip()
+
+            # If segment has word timestamps and is long, split by sentences
+            if seg.words and len(text) > 100:
+                processed_segments.extend(
+                    self._split_segment_by_sentences(seg)
+                )
+            else:
+                processed_segments.append(
+                    {
+                        "start": round(seg.start, 3),
+                        "end": round(seg.end, 3),
+                        "text": text,
+                    }
+                )
 
         logger.info(
             f"Transcription complete: {len(processed_segments)} segments, "
@@ -122,3 +131,56 @@ class TranscriberService:
             "language": info.language,
             "language_probability": info.language_probability,
         }
+
+    def _split_segment_by_sentences(self, segment) -> List[dict]:
+        """Split a long segment into sentence-level chunks using word timestamps.
+
+        This improves conversation display by creating smaller utterances
+        that can be interleaved with other speakers' utterances.
+        """
+        if not segment.words:
+            return [{
+                "start": round(segment.start, 3),
+                "end": round(segment.end, 3),
+                "text": segment.text.strip(),
+            }]
+
+        result = []
+        current_words = []
+        current_start = None
+
+        for word in segment.words:
+            if current_start is None:
+                current_start = word.start
+
+            current_words.append(word.word)
+
+            # Check if word ends a sentence
+            word_text = word.word.strip()
+            if word_text and word_text[-1] in '.!?':
+                # Flush current sentence
+                text = "".join(current_words).strip()
+                if text:
+                    result.append({
+                        "start": round(current_start, 3),
+                        "end": round(word.end, 3),
+                        "text": text,
+                    })
+                current_words = []
+                current_start = None
+
+        # Flush remaining words
+        if current_words:
+            text = "".join(current_words).strip()
+            if text:
+                result.append({
+                    "start": round(current_start, 3),
+                    "end": round(segment.words[-1].end, 3),
+                    "text": text,
+                })
+
+        return result if result else [{
+            "start": round(segment.start, 3),
+            "end": round(segment.end, 3),
+            "text": segment.text.strip(),
+        }]
