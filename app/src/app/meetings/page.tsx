@@ -127,14 +127,14 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
       </div>
 
       {/* Header */}
-      <header className="relative z-10 px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0">
+      <header className="sticky top-0 z-20 px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
@@ -155,20 +155,22 @@ export default function MeetingsPage() {
       <main className="relative z-10 px-6 py-8">
         <div className="max-w-5xl mx-auto">
           {/* Page header */}
-          <div className="mb-8 fade-in-up">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <section className="mb-8 fade-in-up">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Waves className="w-5 h-5 text-primary" />
               </div>
-              <h1 className="text-2xl font-bold text-foreground">История встреч</h1>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-foreground">История встреч</h1>
+                <p className="text-muted-foreground mt-1">
+                  Записи, транскрипты и резюме прошедших встреч
+                </p>
+              </div>
             </div>
-            <p className="text-muted-foreground">
-              Записи, транскрипты и резюме прошедших встреч
-            </p>
-          </div>
+          </section>
 
           {/* Filter tabs */}
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 fade-in-up fade-in-delay-1">
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-1 px-1 fade-in-up fade-in-delay-1">
             {filterTabs.map((tab) => (
               <button
                 key={tab.value}

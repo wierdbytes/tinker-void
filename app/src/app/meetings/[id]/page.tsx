@@ -188,14 +188,14 @@ export default function MeetingDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
       </div>
 
       {/* Header */}
-      <header className="relative z-10 px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0">
+      <header className="sticky top-0 z-20 px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Button
             variant="ghost"
@@ -214,56 +214,56 @@ export default function MeetingDetailPage() {
       <main className="relative z-10 px-6 py-8">
         <div className="max-w-5xl mx-auto">
           {/* Meeting header */}
-          <div className="mb-8 fade-in-up">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+          <section className="mb-8 fade-in-up">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Waves className="w-6 h-6 text-primary" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">{meeting.room.name}</h1>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                  <Calendar className="w-3.5 h-3.5" />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-bold text-foreground truncate">{meeting.room.name}</h1>
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>{formatDate(meeting.startedAt)}</span>
                 </div>
               </div>
             </div>
 
             {/* Meeting stats */}
-            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-secondary">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-4 h-4 flex-shrink-0" />
                 <span>{formatDuration(meeting.startedAt, meeting.endedAt)}</span>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-secondary">
-                <Users className="w-4 h-4" />
+                <Users className="w-4 h-4 flex-shrink-0" />
                 <span>{meeting.participants.length} участников</span>
               </div>
               {meeting.utterances.length > 0 && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary">
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-4 h-4 flex-shrink-0" />
                   <span>{meeting.utterances.length} фраз</span>
                 </div>
               )}
             </div>
 
             {/* Participants */}
-            <div className="flex flex-wrap gap-2 mt-5">
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/30">
               {meeting.participants.map((p) => (
                 <div
                   key={p.id}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-secondary"
                 >
-                  <div className={cn('w-2 h-2 rounded-full', participantStyles[p.id]?.badge)} />
+                  <div className={cn('w-2 h-2 rounded-full flex-shrink-0', participantStyles[p.id]?.badge)} />
                   <span className="text-sm font-medium text-foreground">{p.name}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Transcript */}
-          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-1">
+          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-1 overflow-hidden">
             <CardContent className="p-0">
-              <div className="px-6 py-4 border-b border-border/50">
+              <div className="px-6 py-4 border-b border-border/50 bg-card">
                 <h2 className="font-semibold text-foreground">Транскрипт</h2>
               </div>
 
