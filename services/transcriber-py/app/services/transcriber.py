@@ -1,21 +1,27 @@
+"""Transcription service using Silero VAD + faster-whisper."""
+
 import logging
 import os
+import tempfile
+import subprocess
 from typing import Optional, List
 
 from faster_whisper import WhisperModel
+
+from .vad import SileroVAD
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriberService:
-    """faster-whisper transcription service optimized for Russian + English IT terms."""
+    """faster-whisper transcription service with Silero VAD pre-segmentation."""
 
     def __init__(self):
         self.model: Optional[WhisperModel] = None
+        self.vad: Optional[SileroVAD] = None
         self.model_loaded = False
 
         # Initial prompt with common IT terms to guide recognition
-        # This helps Whisper recognize English terms in Russian context
         self.initial_prompt = (
             "Это разговор о программировании и IT. "
             "Часто используются термины: API, backend, frontend, deploy, "
@@ -29,147 +35,159 @@ class TranscriberService:
         )
 
     def load_model(self, model_size: str = "large-v3"):
-        """Load the Whisper model with CPU optimization."""
+        """Load Whisper model and Silero VAD."""
         cpu_threads = int(os.getenv("CPU_THREADS", "4"))
         model_path = os.getenv("MODEL_PATH", "/app/models")
 
-        logger.info(f"Loading model {model_size} with {cpu_threads} CPU threads...")
+        logger.info(f"Loading Whisper model {model_size}...")
 
-        # For CPU-only inference:
-        # - compute_type="int8" for faster inference on CPU
-        # - device="cpu" explicitly
-        # - cpu_threads controls parallelism
         self.model = WhisperModel(
             model_size,
             device="cpu",
-            compute_type="int8",  # INT8 quantization for CPU
-            cpu_threads=cpu_threads,  # Match to available cores
-            download_root=model_path,  # Cache location in Docker
+            compute_type="int8",
+            cpu_threads=cpu_threads,
+            download_root=model_path,
         )
 
+        logger.info("Loading Silero VAD...")
+        self.vad = SileroVAD()
+        self.vad.load_model()
+
         self.model_loaded = True
-        logger.info(f"Model {model_size} loaded successfully")
+        logger.info("All models loaded successfully")
 
     def transcribe(self, audio_path: str, language: str = "ru") -> dict:
-        """Transcribe audio file with optimized settings for Russian + English.
+        """Transcribe audio using Silero VAD for segmentation + Whisper for ASR.
 
-        Args:
-            audio_path: Path to WAV audio file
-            language: Primary language (default: "ru" for Russian)
-
-        Returns:
-            dict with text, segments, duration, and language info
+        This two-stage approach provides more accurate segment boundaries
+        than relying solely on Whisper's built-in VAD.
         """
-        if not self.model:
-            raise RuntimeError("Model not loaded")
+        if not self.model or not self.vad:
+            raise RuntimeError("Models not loaded")
 
         logger.info(f"Transcribing {audio_path}")
 
-        segments, info = self.model.transcribe(
+        # Stage 1: Get speech segments from Silero VAD
+        vad_segments = self.vad.get_speech_timestamps(
             audio_path,
-            # Language settings for code-switching
-            language=language,  # Primary language: Russian
-            task="transcribe",  # Not translation
-            # Initial prompt helps with IT terminology recognition
-            initial_prompt=self.initial_prompt,
-            # Quality settings (higher = better but slower)
-            beam_size=5,  # Default is 5, good balance
-            patience=1.0,  # Beam search patience (1.0 = standard)
-            # Timestamps
-            word_timestamps=True,  # Get word-level timing for segments
-            # VAD (Voice Activity Detection) for better segments
-            # More aggressive splitting for conversation display
-            vad_filter=True,  # Filter out non-speech
-            vad_parameters={
-                "min_silence_duration_ms": 200,  # Split on shorter pauses (was 500)
-                "speech_pad_ms": 100,  # Less padding (was 200)
-                "min_speech_duration_ms": 100,  # Minimum speech chunk
-                "max_speech_duration_s": 10,  # Force split after 10 seconds
-            },
-            # Prevent hallucinations on silence
-            no_speech_threshold=0.6,
-            # Compression ratio threshold to detect repetition
-            compression_ratio_threshold=2.4,
-            # Log probability threshold
-            log_prob_threshold=-1.0,
-            # Condition on previous text for context continuity
-            condition_on_previous_text=True,
+            threshold=0.35,              # Sensitive detection
+            min_speech_duration_ms=200,  # Minimum speech duration
+            min_silence_duration_ms=150, # Split on short pauses
+            speech_pad_ms=50,            # Small padding
         )
 
-        # Convert generator to list and process
-        segments_list = list(segments)
+        # Merge very close segments but keep them reasonably short
+        vad_segments = self.vad.merge_short_segments(
+            vad_segments,
+            max_gap_seconds=0.3,     # Merge if gap < 300ms
+            max_segment_seconds=15,  # But don't exceed 15s per segment
+        )
 
-        # Build full text from segments
-        full_text = " ".join(seg.text.strip() for seg in segments_list)
+        logger.info(f"VAD detected {len(vad_segments)} speech segments")
 
-        # DEBUG: Log detailed segment and word information
-        logger.info(f"=== DEBUG: Transcription results for {audio_path} ===")
-        logger.info(f"Total segments from Whisper: {len(segments_list)}")
+        if not vad_segments:
+            # No speech detected
+            return {
+                "text": "",
+                "segments": [],
+                "duration": 0,
+                "language": language,
+                "language_probability": 0,
+            }
 
-        for i, seg in enumerate(segments_list):
-            logger.info(f"--- Segment {i} ---")
-            logger.info(f"  Segment time: {seg.start:.3f}s - {seg.end:.3f}s (duration: {seg.end - seg.start:.3f}s)")
-            logger.info(f"  Segment text: {seg.text.strip()[:100]}...")
+        # Stage 2: Transcribe each segment with Whisper
+        all_segments = []
+        all_texts = []
+        total_duration = 0
 
-            if seg.words:
-                logger.info(f"  Word count: {len(seg.words)}")
-                logger.info(f"  Word timestamps:")
-                for j, word in enumerate(seg.words):
-                    # Log each word with its timing
-                    word_text = word.word.strip()
-                    logger.info(f"    [{j:3d}] {word.start:7.3f}s - {word.end:7.3f}s: '{word.word}'")
+        for i, vad_seg in enumerate(vad_segments):
+            seg_start = vad_seg['start']
+            seg_end = vad_seg['end']
+            seg_duration = seg_end - seg_start
 
-                    # Highlight sentence-ending words
-                    if word_text and word_text[-1] in '.!?':
-                        logger.info(f"          ^ SENTENCE END at {word.end:.3f}s")
-            else:
-                logger.info(f"  No word timestamps available")
+            logger.debug(f"Transcribing segment {i+1}/{len(vad_segments)}: {seg_start:.2f}s - {seg_end:.2f}s")
 
-        logger.info(f"=== END DEBUG ===")
+            # Extract audio segment using ffmpeg
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                tmp_path = tmp.name
 
-        # Process segments into response format
-        # Use original VAD segments (no sentence splitting - VAD handles it)
-        processed_segments = []
-        for seg in segments_list:
-            text = seg.text.strip()
-            if text:  # Skip empty segments
-                processed_segments.append({
-                    "start": round(seg.start, 3),
-                    "end": round(seg.end, 3),
-                    "text": text,
-                })
+            try:
+                # Extract segment with ffmpeg
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', audio_path,
+                    '-ss', str(seg_start),
+                    '-t', str(seg_duration),
+                    '-ar', '16000', '-ac', '1',
+                    '-f', 'wav', tmp_path
+                ], capture_output=True, check=True)
+
+                # Transcribe segment (without VAD since we already segmented)
+                segments, info = self.model.transcribe(
+                    tmp_path,
+                    language=language,
+                    task="transcribe",
+                    initial_prompt=self.initial_prompt,
+                    beam_size=5,
+                    word_timestamps=True,
+                    vad_filter=False,  # VAD already done
+                    condition_on_previous_text=False,  # Each segment is independent
+                    no_speech_threshold=0.6,
+                )
+
+                # Process transcription results
+                for seg in segments:
+                    text = seg.text.strip()
+                    if not text:
+                        continue
+
+                    # Adjust timestamps to original audio timeline
+                    adjusted_start = seg_start + seg.start
+                    adjusted_end = seg_start + seg.end
+
+                    # Split by sentences if segment is long
+                    if seg.words and len(text) > 80:
+                        sentence_segments = self._split_by_sentences(
+                            seg.words, seg_start
+                        )
+                        all_segments.extend(sentence_segments)
+                        all_texts.extend(s['text'] for s in sentence_segments)
+                    else:
+                        all_segments.append({
+                            "start": round(adjusted_start, 3),
+                            "end": round(adjusted_end, 3),
+                            "text": text,
+                        })
+                        all_texts.append(text)
+
+                total_duration = max(total_duration, seg_end)
+
+            finally:
+                # Cleanup temp file
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        full_text = " ".join(all_texts)
 
         logger.info(
-            f"Transcription complete: {len(processed_segments)} segments, "
-            f"{info.duration:.1f}s duration, language={info.language}"
+            f"Transcription complete: {len(all_segments)} segments, "
+            f"{total_duration:.1f}s duration"
         )
 
         return {
             "text": full_text,
-            "segments": processed_segments,
-            "duration": info.duration,
-            "language": info.language,
-            "language_probability": info.language_probability,
+            "segments": all_segments,
+            "duration": total_duration,
+            "language": language,
+            "language_probability": 1.0,
         }
 
-    def _split_segment_by_sentences(self, segment) -> List[dict]:
-        """Split a long segment into sentence-level chunks using word timestamps.
-
-        This improves conversation display by creating smaller utterances
-        that can be interleaved with other speakers' utterances.
-        """
-        if not segment.words:
-            return [{
-                "start": round(segment.start, 3),
-                "end": round(segment.end, 3),
-                "text": segment.text.strip(),
-            }]
-
+    def _split_by_sentences(self, words, offset: float) -> List[dict]:
+        """Split word list into sentences based on punctuation."""
         result = []
         current_words = []
         current_start = None
 
-        for word in segment.words:
+        for word in words:
             if current_start is None:
                 current_start = word.start
 
@@ -178,12 +196,11 @@ class TranscriberService:
             # Check if word ends a sentence
             word_text = word.word.strip()
             if word_text and word_text[-1] in '.!?':
-                # Flush current sentence
                 text = "".join(current_words).strip()
                 if text:
                     result.append({
-                        "start": round(current_start, 3),
-                        "end": round(word.end, 3),
+                        "start": round(offset + current_start, 3),
+                        "end": round(offset + word.end, 3),
                         "text": text,
                     })
                 current_words = []
@@ -192,15 +209,11 @@ class TranscriberService:
         # Flush remaining words
         if current_words:
             text = "".join(current_words).strip()
-            if text:
+            if text and words:
                 result.append({
-                    "start": round(current_start, 3),
-                    "end": round(segment.words[-1].end, 3),
+                    "start": round(offset + current_start, 3),
+                    "end": round(offset + words[-1].end, 3),
                     "text": text,
                 })
 
-        return result if result else [{
-            "start": round(segment.start, 3),
-            "end": round(segment.end, 3),
-            "text": segment.text.strip(),
-        }]
+        return result

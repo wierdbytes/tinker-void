@@ -1,12 +1,14 @@
-# Stage 1: Download and cache the Whisper model
+# Stage 1: Download and cache models (Whisper + Silero VAD)
 FROM python:3.11-slim AS model-downloader
 
-# Install faster-whisper for model download
-RUN pip install --no-cache-dir faster-whisper
+# Install dependencies for model download
+RUN pip install --no-cache-dir faster-whisper torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Pre-download the large-v3 model (INT8 quantized)
-# This caches the model in a Docker layer for faster builds
+# Pre-download the large-v3 Whisper model (INT8 quantized)
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8', download_root='/models')"
+
+# Pre-download Silero VAD model
+RUN python -c "import torch; torch.hub.load('snakers4/silero-vad', 'silero_vad', trust_repo=True)"
 
 # Stage 2: Build Python dependencies
 FROM python:3.11-slim AS builder
@@ -19,8 +21,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies as wheels
+# Use CPU-only PyTorch to reduce image size (~200MB vs ~2GB)
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /wheels \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -r requirements.txt
 
 # Stage 3: Runtime
 FROM python:3.11-slim
@@ -35,11 +40,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python packages from pre-built wheels
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir /wheels/* \
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    /wheels/* \
     && rm -rf /wheels
 
-# Copy pre-downloaded model from first stage
+# Copy pre-downloaded models from first stage
 COPY --from=model-downloader /models /app/models
+COPY --from=model-downloader /root/.cache/torch /root/.cache/torch
 
 # Copy application code
 COPY app/ /app/app/
