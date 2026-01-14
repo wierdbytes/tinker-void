@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Slider } from '@/components/ui/slider'
-import { Play, Pause, Volume2, Volume1, VolumeX, Loader2 } from 'lucide-react'
+import { Play, Pause, Volume2, Volume1, VolumeX, Loader2, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ParticipantStyle {
@@ -27,12 +27,16 @@ interface MeetingPlayerProps {
   player: AudioPlayerReturn
   participantStyles: Record<string, ParticipantStyle>
   utterances: Utterance[]
+  onDownload?: () => void
+  isDownloading?: boolean
 }
 
 export function MeetingPlayer({
   player,
   participantStyles,
   utterances,
+  onDownload,
+  isDownloading,
 }: MeetingPlayerProps) {
   const {
     isPlaying,
@@ -148,7 +152,8 @@ export function MeetingPlayer({
         </div>
 
         {/* Speaker controls with volume */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-2">
           {tracks.map(track => {
             const style = participantStyles[track.participant.id]
             const VolumeIcon = track.muted || track.volume === 0
@@ -215,6 +220,25 @@ export function MeetingPlayer({
               </Popover>
             )
           })}
+          </div>
+
+          {/* Download button */}
+          {onDownload && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDownload}
+              disabled={isDownloading}
+              className="text-muted-foreground hover:text-foreground flex-shrink-0"
+            >
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-2" />
+              )}
+              {isDownloading ? 'Загрузка...' : 'Скачать .mp3'}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -116,6 +116,7 @@ export default function SecretMeetingDetailPage() {
   const [meeting, setMeeting] = useState<Meeting | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isDownloadingAudio, setIsDownloadingAudio] = useState(false)
 
   useEffect(() => {
     fetchMeeting()
@@ -207,6 +208,48 @@ export default function SecretMeetingDetailPage() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+  }
+
+  const downloadMergedAudio = async () => {
+    if (!meeting || !meeting.recordings || meeting.recordings.length === 0) return
+
+    setIsDownloadingAudio(true)
+
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/audio?secretId=${secretId}`)
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate audio')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+
+      // Get filename from Content-Disposition header or generate one
+      const disposition = response.headers.get('Content-Disposition')
+      let filename = 'meeting.mp3'
+      if (disposition) {
+        const match = disposition.match(/filename\*=UTF-8''(.+)/)
+        if (match) {
+          filename = decodeURIComponent(match[1])
+        }
+      }
+
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Failed to download audio:', e)
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error'
+      alert(`Ошибка при скачивании аудио: ${errorMessage}`)
+    } finally {
+      setIsDownloadingAudio(false)
+    }
   }
 
   const player = useAudioPlayer(meeting?.recordings, meeting?.startedAt)
@@ -351,6 +394,8 @@ export default function SecretMeetingDetailPage() {
                 player={player}
                 participantStyles={participantStyles}
                 utterances={meeting.utterances}
+                onDownload={downloadMergedAudio}
+                isDownloading={isDownloadingAudio}
               />
             </section>
           )}
