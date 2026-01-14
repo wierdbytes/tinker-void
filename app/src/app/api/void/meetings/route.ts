@@ -80,3 +80,29 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const auth = validateAdminKey(request)
+  if (!auth.valid) return auth.error!
+
+  try {
+    const { id } = await request.json()
+
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json(
+        { error: 'Meeting ID is required' },
+        { status: 400 }
+      )
+    }
+
+    await prisma.meeting.delete({ where: { id } })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Failed to delete meeting:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete meeting' },
+      { status: 500 }
+    )
+  }
+}

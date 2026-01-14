@@ -11,7 +11,6 @@ import {
   Shield,
   DoorOpen,
   Users,
-  Video,
   Trash2,
   Copy,
   ExternalLink,
@@ -25,6 +24,8 @@ import {
   FileAudio,
   MessageSquare,
   LogOut,
+  ChevronLeft,
+  ArrowUpRight,
 } from 'lucide-react'
 
 // Types
@@ -79,11 +80,24 @@ interface Stats {
   live: { activeRooms: number; onlineParticipants: number }
 }
 
+type ViewType = 'main' | 'room-meetings' | 'active-meetings'
+
 // Helpers
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString('ru-RU', {
     day: '2-digit',
     month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatMeetingTitle(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -142,7 +156,6 @@ export default function VoidPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState('')
 
-  // Check if already authenticated from sessionStorage
   useEffect(() => {
     const savedKey = sessionStorage.getItem('void_admin_key')
     if (savedKey) {
@@ -274,6 +287,11 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [deleteConfirmMeeting, setDeleteConfirmMeeting] = useState<string | null>(null)
+
+  // Navigation state
+  const [currentView, setCurrentView] = useState<ViewType>('main')
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
 
   const authHeaders = {
     'Authorization': `Bearer ${adminKey}`,
@@ -328,9 +346,30 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
         setRooms(rooms.filter(r => r.id !== roomId))
         setDeleteConfirm(null)
         fetchStats()
+        if (selectedRoom?.id === roomId) {
+          setCurrentView('main')
+          setSelectedRoom(null)
+        }
       }
     } catch (e) {
       console.error('Failed to delete room:', e)
+    }
+  }
+
+  const deleteMeeting = async (meetingId: string) => {
+    try {
+      const res = await fetch('/api/void/meetings', {
+        method: 'DELETE',
+        headers: authHeaders,
+        body: JSON.stringify({ id: meetingId }),
+      })
+      if (res.ok) {
+        setMeetings(meetings.filter(m => m.id !== meetingId))
+        setDeleteConfirmMeeting(null)
+        fetchStats()
+      }
+    } catch (e) {
+      console.error('Failed to delete meeting:', e)
     }
   }
 
@@ -338,7 +377,70 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
     navigator.clipboard.writeText(text)
   }
 
+  const openRoomMeetings = (room: Room) => {
+    setSelectedRoom(room)
+    setCurrentView('room-meetings')
+  }
+
+  const openActiveMeetings = () => {
+    setCurrentView('active-meetings')
+  }
+
+  const goBack = () => {
+    setCurrentView('main')
+    setSelectedRoom(null)
+  }
+
   const appUrl = typeof window !== 'undefined' ? window.location.origin : ''
+
+  // Filter meetings for selected room
+  const roomMeetings = selectedRoom
+    ? meetings.filter(m => m.roomId === selectedRoom.id)
+    : []
+
+  // Filter active meetings
+  const activeMeetings = meetings.filter(m => m.status === 'IN_PROGRESS')
+
+  // Render sub-views
+  if (currentView === 'room-meetings' && selectedRoom) {
+    return (
+      <SubPageLayout
+        title={selectedRoom.name}
+        onBack={goBack}
+        onRefresh={refreshAll}
+        isLoading={isLoading}
+        onLogout={onLogout}
+      >
+        <MeetingsList
+          meetings={roomMeetings}
+          showRoomName={false}
+          onDelete={deleteMeeting}
+          deleteConfirm={deleteConfirmMeeting}
+          setDeleteConfirm={setDeleteConfirmMeeting}
+        />
+      </SubPageLayout>
+    )
+  }
+
+  if (currentView === 'active-meetings') {
+    return (
+      <SubPageLayout
+        title="Активные встречи"
+        onBack={goBack}
+        onRefresh={refreshAll}
+        isLoading={isLoading}
+        onLogout={onLogout}
+      >
+        <MeetingsList
+          meetings={activeMeetings}
+          showRoomName={true}
+          onDelete={deleteMeeting}
+          deleteConfirm={deleteConfirmMeeting}
+          setDeleteConfirm={setDeleteConfirmMeeting}
+        />
+      </SubPageLayout>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -380,10 +482,6 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
               <DoorOpen className="w-4 h-4" />
               Комнаты
             </TabsTrigger>
-            <TabsTrigger value="meetings" className="gap-2">
-              <Video className="w-4 h-4" />
-              Встречи
-            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -400,6 +498,7 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
                   value={stats.live.onlineParticipants}
                   sublabel={`${stats.live.activeRooms} активных комнат`}
                   highlight
+                  onClick={stats.live.activeRooms > 0 ? openActiveMeetings : undefined}
                 />
                 <StatCard
                   icon={DoorOpen}
@@ -407,7 +506,7 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
                   value={stats.rooms.total}
                 />
                 <StatCard
-                  icon={Video}
+                  icon={CheckCircle2}
                   label="Встречи"
                   value={stats.meetings.total}
                   sublabel={`${stats.meetings.inProgress} идёт`}
@@ -461,7 +560,12 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-medium truncate">{room.name}</h3>
+                            <button
+                              onClick={() => openRoomMeetings(room)}
+                              className="font-medium truncate hover:text-primary hover:underline transition-colors text-left"
+                            >
+                              {room.name}
+                            </button>
                             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                               {room.meetingCount} встреч
                             </span>
@@ -473,7 +577,7 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
                             </div>
                             {room.lastMeeting && (
                               <div className="flex items-center gap-2">
-                                <Video className="w-3.5 h-3.5" />
+                                <Activity className="w-3.5 h-3.5" />
                                 <span>Последняя: {formatRelativeTime(room.lastMeeting.startedAt)}</span>
                               </div>
                             )}
@@ -541,90 +645,186 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
               </div>
             )}
           </TabsContent>
-
-          {/* Meetings Tab */}
-          <TabsContent value="meetings">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : meetings.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                Встречи не найдены
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {meetings.map(meeting => (
-                  <Card key={meeting.id} className="hover:bg-muted/30 transition-colors">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-medium truncate">{meeting.roomName}</h3>
-                            {getStatusBadge(meeting.status)}
-                          </div>
-                          <div className="text-sm text-muted-foreground space-y-1">
-                            <div className="flex items-center gap-4">
-                              <span className="flex items-center gap-1.5">
-                                <Users className="w-3.5 h-3.5" />
-                                {meeting.participantsOnline}/{meeting.participantsTotal}
-                              </span>
-                              <span className="flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5" />
-                                {formatDuration(meeting.startedAt, meeting.endedAt)}
-                              </span>
-                              <span className="flex items-center gap-1.5">
-                                <FileAudio className="w-3.5 h-3.5" />
-                                {meeting.recordingsCount}
-                              </span>
-                              <span className="flex items-center gap-1.5">
-                                <MessageSquare className="w-3.5 h-3.5" />
-                                {meeting.utterancesCount}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span>Начало: {formatDate(meeting.startedAt)}</span>
-                              {meeting.endedAt && (
-                                <span>• Конец: {formatDate(meeting.endedAt)}</span>
-                              )}
-                            </div>
-                          </div>
-                          {meeting.participants.length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                              {meeting.participants.map(p => (
-                                <span
-                                  key={p.id}
-                                  className={`text-xs px-2 py-0.5 rounded-full ${
-                                    p.isOnline
-                                      ? 'bg-green-500/10 text-green-500'
-                                      : 'bg-muted text-muted-foreground'
-                                  }`}
-                                >
-                                  {p.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          asChild
-                        >
-                          <a href={`/s/${meeting.roomSecretId}`} target="_blank" rel="noopener noreferrer" title="Открыть комнату">
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
         </Tabs>
       </main>
+    </div>
+  )
+}
+
+// Sub Page Layout
+function SubPageLayout({
+  title,
+  onBack,
+  onRefresh,
+  isLoading,
+  onLogout,
+  children,
+}: {
+  title: string
+  onBack: () => void
+  onRefresh: () => void
+  isLoading: boolean
+  onLogout: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border/50 bg-background/95 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={onBack}>
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="font-semibold text-lg truncate">{title}</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+            <ThemeToggle />
+            <Button variant="ghost" size="icon" onClick={onLogout}>
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {children}
+      </main>
+    </div>
+  )
+}
+
+// Meetings List Component
+function MeetingsList({
+  meetings,
+  showRoomName,
+  onDelete,
+  deleteConfirm,
+  setDeleteConfirm,
+}: {
+  meetings: Meeting[]
+  showRoomName: boolean
+  onDelete: (id: string) => void
+  deleteConfirm: string | null
+  setDeleteConfirm: (id: string | null) => void
+}) {
+  if (meetings.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        Встречи не найдены
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {meetings.map(meeting => (
+        <Card key={meeting.id} className="hover:bg-muted/30 transition-colors">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <a
+                    href={`/s/${meeting.roomSecretId}/meetings/${meeting.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium hover:text-primary hover:underline transition-colors flex items-center gap-1.5"
+                  >
+                    {formatMeetingTitle(meeting.startedAt)}
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </a>
+                  {getStatusBadge(meeting.status)}
+                </div>
+                {showRoomName && (
+                  <div className="text-sm text-muted-foreground mb-2">
+                    <span className="font-medium">{meeting.roomName}</span>
+                  </div>
+                )}
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      {meeting.participantsOnline}/{meeting.participantsTotal}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      {formatDuration(meeting.startedAt, meeting.endedAt)}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <FileAudio className="w-3.5 h-3.5" />
+                      {meeting.recordingsCount}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {meeting.utterancesCount}
+                    </span>
+                  </div>
+                  {meeting.endedAt && (
+                    <div className="text-xs text-muted-foreground/70">
+                      Завершена: {formatDate(meeting.endedAt)}
+                    </div>
+                  )}
+                </div>
+                {meeting.participants.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {meeting.participants.map(p => (
+                      <span
+                        key={p.id}
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          p.isOnline
+                            ? 'bg-green-500/10 text-green-500'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {deleteConfirm === meeting.id ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => onDelete(meeting.id)}
+                    >
+                      Удалить
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => setDeleteConfirm(null)}
+                    >
+                      Отмена
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                    onClick={() => setDeleteConfirm(meeting.id)}
+                    title="Удалить"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }
@@ -637,6 +837,7 @@ function StatCard({
   sublabel,
   highlight,
   error,
+  onClick,
 }: {
   icon: React.ElementType
   label: string
@@ -644,9 +845,15 @@ function StatCard({
   sublabel?: string
   highlight?: boolean
   error?: boolean
+  onClick?: () => void
 }) {
+  const cardClasses = `${
+    highlight ? 'border-primary/30 bg-primary/5' :
+    error ? 'border-red-500/30 bg-red-500/5' : ''
+  } ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`
+
   return (
-    <Card className={highlight ? 'border-primary/30 bg-primary/5' : error ? 'border-red-500/30 bg-red-500/5' : ''}>
+    <Card className={cardClasses} onClick={onClick}>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -656,11 +863,14 @@ function StatCard({
           }`}>
             <Icon className="w-5 h-5" />
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-2xl font-bold">{value.toLocaleString('ru-RU')}</p>
             <p className="text-sm text-muted-foreground">{label}</p>
             {sublabel && <p className="text-xs text-muted-foreground/70">{sublabel}</p>}
           </div>
+          {onClick && (
+            <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+          )}
         </div>
       </CardContent>
     </Card>
