@@ -127,6 +127,20 @@ export default function SecretHistoryPage() {
     })
   }
 
+  const formatMeetingTitle = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const isThisYear = date.getFullYear() === now.getFullYear()
+
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      ...(isThisYear ? {} : { year: 'numeric' }),
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   const formatDuration = (start: string, end: string | null) => {
     if (!end) return 'В процессе'
     const startDate = new Date(start)
@@ -294,13 +308,10 @@ export default function SecretHistoryPage() {
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-foreground truncate mb-1">
-                            Встреча #{index + 1}
+                          <h3 className="font-semibold text-foreground truncate flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            {formatMeetingTitle(meeting.startedAt)}
                           </h3>
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <span>{formatDate(meeting.startedAt)}</span>
-                          </div>
                         </div>
                         <div
                           className={cn(
