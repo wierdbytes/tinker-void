@@ -78,10 +78,13 @@ class TranscriberService:
             # Timestamps
             word_timestamps=True,  # Get word-level timing for segments
             # VAD (Voice Activity Detection) for better segments
+            # More aggressive splitting for conversation display
             vad_filter=True,  # Filter out non-speech
             vad_parameters={
-                "min_silence_duration_ms": 500,  # Minimum silence to split
-                "speech_pad_ms": 200,  # Padding around speech
+                "min_silence_duration_ms": 200,  # Split on shorter pauses (was 500)
+                "speech_pad_ms": 100,  # Less padding (was 200)
+                "min_speech_duration_ms": 100,  # Minimum speech chunk
+                "max_speech_duration_s": 10,  # Force split after 10 seconds
             },
             # Prevent hallucinations on silence
             no_speech_threshold=0.6,
@@ -125,24 +128,16 @@ class TranscriberService:
         logger.info(f"=== END DEBUG ===")
 
         # Process segments into response format
-        # Split large segments into sentences for better conversation display
+        # Use original VAD segments (no sentence splitting - VAD handles it)
         processed_segments = []
         for seg in segments_list:
             text = seg.text.strip()
-
-            # If segment has word timestamps and is long, split by sentences
-            if seg.words and len(text) > 100:
-                processed_segments.extend(
-                    self._split_segment_by_sentences(seg)
-                )
-            else:
-                processed_segments.append(
-                    {
-                        "start": round(seg.start, 3),
-                        "end": round(seg.end, 3),
-                        "text": text,
-                    }
-                )
+            if text:  # Skip empty segments
+                processed_segments.append({
+                    "start": round(seg.start, 3),
+                    "end": round(seg.end, 3),
+                    "text": text,
+                })
 
         logger.info(
             f"Transcription complete: {len(processed_segments)} segments, "
