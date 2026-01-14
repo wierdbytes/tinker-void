@@ -101,12 +101,19 @@ async function handleTrackPublished(event: any) {
   const { room, participant, track } = event
   if (!room || !participant || !track) return
 
-  console.log(`Track published event - type: ${track.type}, sid: ${track.sid}, participant: ${participant.identity}`)
+  // LiveKit track types: 0 = AUDIO, 1 = VIDEO
+  // LiveKit track sources: 0 = UNKNOWN, 1 = CAMERA, 2 = MICROPHONE, 3 = SCREEN_SHARE, 4 = SCREEN_SHARE_AUDIO
+  const trackSource = track.source
+  const trackType = track.type
 
-  // Only record audio tracks (type can be 0/'AUDIO' or string 'AUDIO')
-  const isAudio = track.type === 0 || track.type === 'AUDIO'
-  if (!isAudio) {
-    console.log(`Skipping non-audio track: ${track.type}`)
+  console.log(`Track published event - type: ${trackType}, source: ${trackSource}, sid: ${track.sid}, participant: ${participant.identity}`)
+
+  // Only record microphone audio tracks (type=0/AUDIO, source=2/MICROPHONE)
+  const isAudio = trackType === 0 || trackType === 'AUDIO'
+  const isMicrophone = trackSource === 2 || trackSource === 'MICROPHONE'
+
+  if (!isAudio || !isMicrophone) {
+    console.log(`Skipping track: type=${trackType}, source=${trackSource} (not microphone audio)`)
     return
   }
 

@@ -8,6 +8,7 @@ import {
   useParticipants,
   useTracks,
   useRoomContext,
+  VideoTrack,
 } from '@livekit/components-react'
 import { Track, RoomOptions } from 'livekit-client'
 import '@livekit/components-styles'
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { AudioSettings } from '@/components/audio'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings, Waves } from 'lucide-react'
+import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings, Waves, Monitor, MonitorOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface VideoRoomProps {
@@ -71,10 +72,19 @@ interface RoomContentProps {
 
 function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
   const room = useRoomContext()
-  const { localParticipant } = useLocalParticipant()
+  const { localParticipant, isScreenShareEnabled } = useLocalParticipant()
   const participants = useParticipants()
   const [isMuted, setIsMuted] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  const screenShareTracks = useTracks(
+    [Track.Source.ScreenShare, Track.Source.ScreenShareAudio],
+    { onlySubscribed: true }
+  )
+  const activeScreenShare = screenShareTracks.find(
+    track => track.source === Track.Source.ScreenShare
+  )
+  const screenShareParticipant = activeScreenShare?.participant
 
   const toggleMute = useCallback(async () => {
     if (localParticipant) {
@@ -89,6 +99,16 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [roomId])
+
+  const toggleScreenShare = useCallback(async () => {
+    if (localParticipant) {
+      try {
+        await localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
+      } catch (error) {
+        console.error('Failed to toggle screen share:', error)
+      }
+    }
+  }, [localParticipant, isScreenShareEnabled])
 
   const handleLeave = useCallback(() => {
     room.disconnect()
@@ -130,23 +150,63 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
         </div>
       </header>
 
-      {/* Participants Grid */}
-      <div className="flex-1 p-6 overflow-auto">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-w-7xl mx-auto">
-          {participants.map((participant) => (
-            <ParticipantTile
-              key={participant.identity}
-              participant={participant}
-              isLocal={participant.identity === localParticipant?.identity}
-            />
-          ))}
-        </div>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden">
+        {activeScreenShare ? (
+          /* Layout with Screen Share */
+          <div className="flex h-full gap-4 p-4">
+            {/* Screen Share - Main Area */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Presenter Info */}
+              <div className="flex items-center gap-2 mb-3 px-2">
+                <Monitor className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">
+                  {screenShareParticipant?.name || screenShareParticipant?.identity}
+                  {screenShareParticipant?.identity === localParticipant?.identity && ' (вы)'}
+                </span>
+                <span className="text-xs text-muted-foreground">делится экраном</span>
+              </div>
+              {/* Video Container */}
+              <div className="flex-1 relative bg-black rounded-2xl overflow-hidden shadow-soft-lg">
+                <VideoTrack
+                  trackRef={activeScreenShare}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            </div>
+            {/* Participants Sidebar */}
+            <div className="w-48 lg:w-56 flex-shrink-0 overflow-y-auto">
+              <div className="flex flex-col gap-3">
+                {participants.map((participant) => (
+                  <ParticipantTileCompact
+                    key={participant.identity}
+                    participant={participant}
+                    isLocal={participant.identity === localParticipant?.identity}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Normal Grid Layout */
+          <div className="p-6 overflow-auto h-full">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-w-7xl mx-auto">
+              {participants.map((participant) => (
+                <ParticipantTile
+                  key={participant.identity}
+                  participant={participant}
+                  isLocal={participant.identity === localParticipant?.identity}
+                />
+              ))}
+            </div>
 
-        {/* Empty state */}
-        {participants.length === 1 && (
-          <div className="text-center mt-12 text-muted-foreground">
-            <p className="text-sm">Вы единственный участник</p>
-            <p className="text-xs mt-1">Поделитесь ссылкой, чтобы пригласить других</p>
+            {/* Empty state */}
+            {participants.length === 1 && (
+              <div className="text-center mt-12 text-muted-foreground">
+                <p className="text-sm">Вы единственный участник</p>
+                <p className="text-xs mt-1">Поделитесь ссылкой, чтобы пригласить других</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -171,6 +231,26 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
               <MicOff className="w-6 h-6 text-white" />
             ) : (
               <Mic className="w-6 h-6 text-white" />
+            )}
+          </Button>
+
+          {/* Screen Share Button */}
+          <Button
+            variant={isScreenShareEnabled ? 'default' : 'ghost'}
+            size="icon"
+            onClick={toggleScreenShare}
+            className={cn(
+              'w-14 h-14 rounded-full transition-all duration-200 hover:scale-105 active:scale-95',
+              isScreenShareEnabled
+                ? 'bg-primary hover:bg-primary/90'
+                : 'bg-zinc-700 hover:bg-zinc-600'
+            )}
+            title={isScreenShareEnabled ? 'Остановить показ экрана' : 'Поделиться экраном'}
+          >
+            {isScreenShareEnabled ? (
+              <MonitorOff className="w-6 h-6 text-white" />
+            ) : (
+              <Monitor className="w-6 h-6 text-white" />
             )}
           </Button>
 
@@ -288,6 +368,70 @@ function ParticipantTile({ participant, isLocal }: ParticipantTileProps) {
       {/* Mute indicator */}
       {isMuted && (
         <div className="absolute top-3 right-3 p-1.5 bg-destructive rounded-lg shadow-soft">
+          <MicOff className="w-3 h-3 text-destructive-foreground" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ParticipantTileCompact({ participant, isLocal }: ParticipantTileProps) {
+  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: false })
+  const audioTrack = tracks.find(
+    (t) => t.participant.identity === participant.identity && t.source === Track.Source.Microphone
+  )
+
+  const isSpeaking = participant.isSpeaking
+  const isMuted = !audioTrack?.publication?.isMuted === false
+  const avatarColor = getAvatarColor(participant.name || participant.identity)
+
+  return (
+    <div
+      className={cn(
+        'relative flex items-center gap-3 p-3 rounded-xl bg-card border transition-all duration-300',
+        isSpeaking
+          ? 'border-primary shadow-soft pulse-glow'
+          : 'border-border/30 shadow-soft',
+        isLocal && 'border-primary/50'
+      )}
+    >
+      {/* Avatar */}
+      <div
+        className={cn(
+          'w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0 bg-gradient-to-br transition-transform duration-300',
+          avatarColor,
+          isSpeaking && 'scale-105'
+        )}
+      >
+        {participant.name?.charAt(0)?.toUpperCase() || '?'}
+      </div>
+
+      {/* Name and indicators */}
+      <div className="flex-1 min-w-0">
+        <p className="text-foreground font-medium text-sm truncate">
+          {participant.name || participant.identity}
+          {isLocal && <span className="text-muted-foreground ml-1">(вы)</span>}
+        </p>
+        {/* Speaking indicator */}
+        <div className="flex items-end gap-0.5 h-3 mt-1">
+          {isSpeaking ? (
+            <>
+              <span className="w-0.5 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
+              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
+              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
+              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {isMuted ? 'Без звука' : 'Готов'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Mute indicator */}
+      {isMuted && (
+        <div className="p-1 bg-destructive rounded-lg flex-shrink-0">
           <MicOff className="w-3 h-3 text-destructive-foreground" />
         </div>
       )}
