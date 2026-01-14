@@ -160,7 +160,6 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin123
       - MINIO_BUCKET=recordings
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TRANSCRIBER_URL=http://transcriber:8000
       - REDIS_URL=redis://redis:6379
     ports:

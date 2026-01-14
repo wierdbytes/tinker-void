@@ -20,14 +20,12 @@ fi
 if [ ! -f ".env" ]; then
     echo "Creating .env file from .env.example..."
     cp .env.example .env
-    echo "Please edit .env and add your ANTHROPIC_API_KEY"
 fi
 
 # Create app/.env.local if it doesn't exist
 if [ ! -f "app/.env.local" ]; then
     echo "Creating app/.env.local from example..."
     cp app/.env.local.example app/.env.local
-    echo "Please edit app/.env.local and add your ANTHROPIC_API_KEY"
 fi
 
 # Create app/.env for Prisma (Prisma reads .env, not .env.local)

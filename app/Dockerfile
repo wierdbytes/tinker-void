@@ -17,6 +17,12 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+# Build arguments for Next.js public env vars (required at build time)
+ARG NEXT_PUBLIC_LIVEKIT_URL
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
