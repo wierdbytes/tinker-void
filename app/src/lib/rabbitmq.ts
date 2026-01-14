@@ -2,7 +2,7 @@
  * RabbitMQ client for publishing transcription tasks.
  */
 
-import amqplib, { Channel, Connection } from 'amqplib'
+import amqplib, { Channel, ChannelModel } from 'amqplib'
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://tinkervoid:tinkervoid_secret@localhost:5672/'
 
@@ -11,7 +11,7 @@ const EXCHANGE_NAME = 'transcription'
 const TASKS_ROUTING_KEY = 'transcription.task'
 
 // Connection state
-let connection: Connection | null = null
+let connection: ChannelModel | null = null
 let channel: Channel | null = null
 let isConnecting = false
 
