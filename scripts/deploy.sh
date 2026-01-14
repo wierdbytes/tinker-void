@@ -302,7 +302,7 @@ start_services() {
     # Wait for postgres and run migrations
     if wait_for_postgres; then
         log_info "Running database migrations..."
-        if docker_compose exec -T app ./node_modules/.bin/prisma db push; then
+        if docker_compose exec -T app node node_modules/prisma/build/index.js db push; then
             log_success "Database migrations completed"
         else
             log_warn "Migration failed - try manually: ./scripts/deploy.sh --migrate"
@@ -390,7 +390,7 @@ update_services() {
 
 run_migrations() {
     log_info "Running database migrations..."
-    docker_compose exec app ./node_modules/.bin/prisma db push
+    docker_compose exec app node node_modules/prisma/build/index.js db push
     log_success "Migrations completed"
 }
 
