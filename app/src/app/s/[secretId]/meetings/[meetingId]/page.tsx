@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText, Mic } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText, Mic, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAudioPlayer } from '@/hooks/useAudioPlayer'
 import { MeetingPlayer } from '@/components/player/MeetingPlayer'
@@ -179,6 +179,36 @@ export default function SecretMeetingDetailPage() {
     participantStyles[p.id] = participantGradients[i % participantGradients.length]
   })
 
+  const downloadTranscriptMarkdown = () => {
+    if (!meeting || meeting.utterances.length === 0) return
+
+    const grouped = groupUtterances(meeting.utterances)
+
+    let markdown = `# ${meeting.room.name}\n\n`
+    markdown += `**Дата:** ${formatDate(meeting.startedAt)}\n\n`
+    markdown += `**Длительность:** ${formatDuration(meeting.startedAt, meeting.endedAt)}\n\n`
+    markdown += `**Участники:** ${meeting.participants.map(p => p.name).join(', ')}\n\n`
+    markdown += `---\n\n`
+    markdown += `## Транскрипт\n\n`
+
+    for (const utterance of grouped) {
+      markdown += `**[${formatTime(utterance.startTime)}] ${utterance.participant.name}:**\n`
+      markdown += `${utterance.text}\n\n`
+    }
+
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    const safeName = meeting.room.name.replace(/[^a-zA-Z0-9а-яА-Я\s-]/g, '').replace(/\s+/g, '_')
+    const date = new Date(meeting.startedAt).toISOString().split('T')[0]
+    link.download = `${safeName}_${date}.md`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   const player = useAudioPlayer(meeting?.recordings, meeting?.startedAt)
 
   if (isLoading) {
@@ -328,8 +358,19 @@ export default function SecretMeetingDetailPage() {
           {/* Transcript */}
           <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-2 overflow-hidden">
             <CardContent className="p-0">
-              <div className="px-6 py-4 border-b border-border/50 bg-card">
+              <div className="px-6 py-4 border-b border-border/50 bg-card flex items-center justify-between">
                 <h2 className="font-semibold text-foreground">Транскрипт</h2>
+                {meeting.utterances.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={downloadTranscriptMarkdown}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Скачать .md
+                  </Button>
+                )}
               </div>
 
               {meeting.utterances.length > 0 ? (
