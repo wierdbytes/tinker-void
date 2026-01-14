@@ -142,7 +142,7 @@ async function handleTrackPublished(event: any) {
   }
 
   const meeting = dbRoom.meetings[0]
-  const dbParticipant = meeting.participants.find(p => p.identity === participantIdentity)
+  const dbParticipant = meeting.participants.find((p: { identity: string }) => p.identity === participantIdentity)
 
   if (!dbParticipant) {
     console.log(`Participant ${participantIdentity} not found in meeting`)

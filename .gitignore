@@ -49,6 +49,7 @@ venv/
 
 # Prisma
 app/prisma/migrations/*_migration_lock.toml
+app/src/generated/
 
 # Rust
 target/

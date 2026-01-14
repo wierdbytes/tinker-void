@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Transcribe each recording
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const transcriptionPromises = meeting.recordings.map(async (recording) => {
+    const transcriptionPromises = meeting.recordings.map(async (recording: { id: string; fileUrl: string; startedAt: Date | null; participantId: string }) => {
       try {
         // Send relative path - transcriber has its own MinIO connection
         console.log(`Transcribing recording ${recording.id}: ${recording.fileUrl}`)
