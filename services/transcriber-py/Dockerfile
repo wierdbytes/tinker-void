@@ -1,8 +1,10 @@
 # Stage 1: Download and cache models (Whisper + Silero VAD)
 FROM python:3.11-slim AS model-downloader
 
-# Install dependencies for model download
-RUN pip install --no-cache-dir faster-whisper torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Install dependencies for model download (CPU-only PyTorch)
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    faster-whisper torch torchaudio
 
 # Pre-download the large-v3 Whisper model (INT8 quantized)
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8', download_root='/models')"
