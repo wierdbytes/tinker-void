@@ -302,7 +302,7 @@ start_services() {
     # Wait for postgres and run migrations
     if wait_for_postgres; then
         log_info "Running database migrations..."
-        if docker_compose exec -T app npx prisma db push --skip-generate; then
+        if docker_compose exec -T app npx prisma db push; then
             log_success "Database migrations completed"
         else
             log_warn "Migration failed - try manually: ./scripts/deploy.sh --migrate"
