@@ -250,6 +250,25 @@ generate_livekit_configs() {
 # Docker Functions
 # -----------------------------------------------------------------------------
 
+wait_for_postgres() {
+    log_info "Waiting for database to be ready..."
+    local retries=30
+    local interval=5
+
+    while [ $retries -gt 0 ]; do
+        if docker_compose exec -T postgres pg_isready -U "${POSTGRES_USER:-tinkervoid}" -q 2>/dev/null; then
+            log_success "Database is ready"
+            return 0
+        fi
+        retries=$((retries - 1))
+        log_info "Database not ready, retrying in ${interval}s... ($retries attempts left)"
+        sleep $interval
+    done
+
+    log_error "Database did not become ready in time"
+    return 1
+}
+
 docker_compose() {
     local compose_files="-f $COMPOSE_FILE"
 
@@ -279,6 +298,18 @@ start_services() {
     # Build and start
     docker_compose build
     docker_compose up -d
+
+    # Wait for postgres and run migrations
+    if wait_for_postgres; then
+        log_info "Running database migrations..."
+        if docker_compose exec -T app npx prisma db push --skip-generate; then
+            log_success "Database migrations completed"
+        else
+            log_warn "Migration failed - try manually: ./scripts/deploy.sh --migrate"
+        fi
+    else
+        exit 1
+    fi
 
     log_success "Services started!"
     echo ""
