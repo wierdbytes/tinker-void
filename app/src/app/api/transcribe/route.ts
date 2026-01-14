@@ -3,6 +3,30 @@ import { prisma } from '@/lib/prisma'
 
 const TRANSCRIBER_URL = process.env.TRANSCRIBER_URL || 'http://localhost:8001'
 
+// Calculate offset in seconds for a recording relative to meeting start
+// Uses recording.startedAt (from LiveKit Egress) for accurate timing
+// Falls back to parsing timestamp from filename if startedAt is not available
+function calculateRecordingOffset(
+  recordingStartedAt: Date | null,
+  fileUrl: string,
+  meetingStartedAt: Date
+): number {
+  let recordingStartMs: number
+
+  if (recordingStartedAt) {
+    // Use accurate startedAt from LiveKit Egress
+    recordingStartMs = recordingStartedAt.getTime()
+  } else {
+    // Fallback: extract timestamp from file URL (less accurate, has ~15s delay)
+    const filename = fileUrl.split('/').pop() || ''
+    const match = filename.match(/_(\d+)\.ogg$/)
+    recordingStartMs = match ? parseInt(match[1], 10) : 0
+  }
+
+  const meetingStartMs = meetingStartedAt.getTime()
+  return Math.max(0, (recordingStartMs - meetingStartMs) / 1000)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { meetingId } = await request.json()
@@ -59,15 +83,19 @@ export async function POST(request: NextRequest) {
 
         const result = await response.json()
 
-        // Save utterances from transcription
+        // Calculate offset for this recording relative to meeting start
+        const offset = calculateRecordingOffset(recording.startedAt, recording.fileUrl, meeting.startedAt)
+        console.log(`Recording ${recording.id} offset: ${offset}s (startedAt: ${recording.startedAt})`)
+
+        // Save utterances from transcription (with offset added to times)
         if (result.segments && result.segments.length > 0) {
           await prisma.utterance.createMany({
             data: result.segments.map((segment: any) => ({
               meetingId: meeting.id,
               participantId: recording.participantId,
               text: segment.text,
-              startTime: segment.start,
-              endTime: segment.end,
+              startTime: segment.start + offset,
+              endTime: segment.end + offset,
             })),
           })
         } else if (result.text) {
@@ -77,8 +105,8 @@ export async function POST(request: NextRequest) {
               meetingId: meeting.id,
               participantId: recording.participantId,
               text: result.text,
-              startTime: 0,
-              endTime: result.duration || 0,
+              startTime: offset,
+              endTime: (result.duration || 0) + offset,
             },
           })
         }
@@ -123,7 +151,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Recording ID is required' }, { status: 400 })
     }
 
-    // Get recording
+    // Get recording with meeting for offset calculation
     const recording = await prisma.recording.findUnique({
       where: { id: recording_id },
       include: { meeting: true },
@@ -133,15 +161,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Recording not found' }, { status: 404 })
     }
 
-    // Save utterances
+    // Calculate offset for this recording relative to meeting start
+    const offset = calculateRecordingOffset(recording.startedAt, recording.fileUrl, recording.meeting.startedAt)
+    console.log(`Recording ${recording.id} offset (callback): ${offset}s (startedAt: ${recording.startedAt})`)
+
+    // Save utterances (with offset added to times)
     if (segments && segments.length > 0) {
       await prisma.utterance.createMany({
         data: segments.map((segment: any) => ({
           meetingId: recording.meetingId,
           participantId: recording.participantId,
           text: segment.text,
-          startTime: segment.start,
-          endTime: segment.end,
+          startTime: segment.start + offset,
+          endTime: segment.end + offset,
         })),
       })
     } else if (text) {
@@ -150,8 +182,8 @@ export async function PUT(request: NextRequest) {
           meetingId: recording.meetingId,
           participantId: recording.participantId,
           text,
-          startTime: 0,
-          endTime: duration || 0,
+          startTime: offset,
+          endTime: (duration || 0) + offset,
         },
       })
     }

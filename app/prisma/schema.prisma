@@ -76,6 +76,7 @@ model Recording {
   fileUrl       String      // S3/MinIO URL
   fileName      String      // Original file name
   duration      Float       // Duration in seconds
+  startedAt     DateTime?   // When the recording actually started (from LiveKit Egress)
   transcribed   Boolean     @default(false)
   createdAt     DateTime    @default(now())
 

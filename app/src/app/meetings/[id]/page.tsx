@@ -37,6 +37,7 @@ interface Recording {
   id: string
   fileUrl: string
   duration: number
+  startedAt: string | null  // When the recording actually started (from LiveKit Egress)
   participant: Participant
 }
 
@@ -276,7 +277,11 @@ export default function MeetingDetailPage() {
           {/* Audio Player */}
           {meeting.recordings && meeting.recordings.length > 0 && (
             <section className="mb-8 fade-in-up fade-in-delay-1">
-              <MeetingPlayer player={player} participantStyles={participantStyles} />
+              <MeetingPlayer
+                player={player}
+                participantStyles={participantStyles}
+                utterances={meeting.utterances}
+              />
             </section>
           )}
 
@@ -295,7 +300,7 @@ export default function MeetingDetailPage() {
                       return (
                         <div
                           key={utterance.id}
-                          onClick={() => player.seek(utterance.startTime)}
+                          onClick={() => player.seekAndPlay(utterance.startTime)}
                           className={cn(
                             'flex gap-4 p-4 rounded-xl transition-all cursor-pointer hover:scale-[1.01] hover:shadow-md',
                             style?.bg

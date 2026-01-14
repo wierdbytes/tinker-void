@@ -6,6 +6,7 @@ interface Recording {
   id: string
   fileUrl: string
   duration: number
+  startedAt: string | null  // When the recording actually started (from LiveKit Egress)
   participant: {
     id: string
     name: string
@@ -16,6 +17,7 @@ interface Recording {
 export interface TrackState {
   id: string
   muted: boolean
+  volume: number
   loaded: boolean
   error: string | null
   offset: number
@@ -38,16 +40,35 @@ export interface AudioPlayerReturn extends PlayerState {
   play: () => void
   pause: () => void
   seek: (time: number) => void
+  seekAndPlay: (time: number) => void
   toggleMute: (trackId: string) => void
+  setVolume: (trackId: string, volume: number) => void
 }
 
 const MINIO_BASE_URL = process.env.NEXT_PUBLIC_MINIO_URL || 'http://localhost:9000/recordings'
 
-// Extract timestamp from file URL: roomName/participant_1704067200000.ogg
-function extractTimestampFromUrl(fileUrl: string): number {
-  const filename = fileUrl.split('/').pop() || ''
-  const match = filename.match(/_(\d+)\.ogg$/)
-  return match ? parseInt(match[1], 10) : 0
+// Calculate offset in seconds for a recording relative to meeting start
+// Uses recording.startedAt (from LiveKit Egress) for accurate timing
+// Falls back to parsing timestamp from filename if startedAt is not available
+function calculateRecordingOffset(
+  recordingStartedAt: string | null,
+  fileUrl: string,
+  meetingStartedAt: string
+): number {
+  let recordingStartMs: number
+
+  if (recordingStartedAt) {
+    // Use accurate startedAt from LiveKit Egress
+    recordingStartMs = new Date(recordingStartedAt).getTime()
+  } else {
+    // Fallback: extract timestamp from file URL (less accurate, has ~15s delay)
+    const filename = fileUrl.split('/').pop() || ''
+    const match = filename.match(/_(\d+)\.ogg$/)
+    recordingStartMs = match ? parseInt(match[1], 10) : 0
+  }
+
+  const meetingStartMs = new Date(meetingStartedAt).getTime()
+  return Math.max(0, (recordingStartMs - meetingStartMs) / 1000)
 }
 
 export function useAudioPlayer(
@@ -72,11 +93,9 @@ export function useAudioPlayer(
   })
 
   // Calculate offset for a recording relative to meeting start
-  const calculateOffset = useCallback((fileUrl: string): number => {
+  const calculateOffset = useCallback((rec: Recording): number => {
     if (!meetingStartedAt) return 0
-    const recordingTs = extractTimestampFromUrl(fileUrl)
-    const meetingStartMs = new Date(meetingStartedAt).getTime()
-    return Math.max(0, (recordingTs - meetingStartMs) / 1000)
+    return calculateRecordingOffset(rec.startedAt, rec.fileUrl, meetingStartedAt)
   }, [meetingStartedAt])
 
   // Initialize AudioContext and load all tracks
@@ -97,9 +116,10 @@ export function useAudioPlayer(
       const initialTracks: TrackState[] = recordings.map(rec => ({
         id: rec.id,
         muted: false,
+        volume: 1,
         loaded: false,
         error: null,
-        offset: calculateOffset(rec.fileUrl),
+        offset: calculateOffset(rec),
         duration: rec.duration,
         participant: {
           id: rec.participant.id,
@@ -127,11 +147,6 @@ export function useAudioPlayer(
           // Store buffer
           buffersRef.current.set(rec.id, audioBuffer)
 
-          // Create gain node for this track
-          const gainNode = audioContext.createGain()
-          gainNode.connect(audioContext.destination)
-          gainNodesRef.current.set(rec.id, gainNode)
-
           // Update track state
           if (isMounted) {
             setTracks(prev => prev.map(t =>
@@ -156,7 +171,7 @@ export function useAudioPlayer(
 
       // Calculate total duration (max of offset + duration for all tracks)
       const totalDuration = recordings.reduce((max, rec) => {
-        const offset = calculateOffset(rec.fileUrl)
+        const offset = calculateOffset(rec)
         return Math.max(max, offset + rec.duration)
       }, 0)
 
@@ -180,6 +195,9 @@ export function useAudioPlayer(
       sourceNodesRef.current.forEach(source => {
         try { source.stop() } catch {}
       })
+      sourceNodesRef.current.clear()
+      gainNodesRef.current.clear()
+      buffersRef.current.clear()
       audioContextRef.current?.close()
     }
   }, [recordings, meetingStartedAt, calculateOffset])
@@ -215,6 +233,7 @@ export function useAudioPlayer(
       try { source.stop() } catch {}
     })
     sourceNodesRef.current.clear()
+    gainNodesRef.current.clear()
 
     // Resume AudioContext if suspended
     if (audioContext.state === 'suspended') {
@@ -223,11 +242,16 @@ export function useAudioPlayer(
 
     // Create and start source nodes for each track
     tracks.forEach(track => {
-      if (!track.loaded || track.muted) return
+      if (!track.loaded) return
 
       const buffer = buffersRef.current.get(track.id)
-      const gainNode = gainNodesRef.current.get(track.id)
-      if (!buffer || !gainNode) return
+      if (!buffer) return
+
+      // Create gain node for this track
+      const gainNode = audioContext.createGain()
+      gainNode.gain.value = track.muted ? 0 : track.volume
+      gainNode.connect(audioContext.destination)
+      gainNodesRef.current.set(track.id, gainNode)
 
       const source = audioContext.createBufferSource()
       source.buffer = buffer
@@ -322,6 +346,26 @@ export function useAudioPlayer(
     }
   }, [playerState.totalDuration, startPlayback])
 
+  // Seek and always start playing
+  const seekAndPlay = useCallback((time: number) => {
+    // Stop current playback
+    isPlayingRef.current = false
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
+    sourceNodesRef.current.forEach(source => {
+      try { source.stop() } catch {}
+    })
+    sourceNodesRef.current.clear()
+
+    const clampedTime = Math.max(0, Math.min(time, playerState.totalDuration))
+    pausedAtRef.current = clampedTime
+
+    isPlayingRef.current = true
+    setPlayerState(prev => ({ ...prev, currentTime: clampedTime, isPlaying: true }))
+    startPlayback(clampedTime)
+  }, [playerState.totalDuration, startPlayback])
+
   // Toggle mute for a track
   const toggleMute = useCallback((trackId: string) => {
     setTracks(prev => prev.map(t => {
@@ -330,10 +374,25 @@ export function useAudioPlayer(
       const newMuted = !t.muted
       const gainNode = gainNodesRef.current.get(trackId)
       if (gainNode) {
-        gainNode.gain.value = newMuted ? 0 : 1
+        gainNode.gain.value = newMuted ? 0 : t.volume
       }
 
       return { ...t, muted: newMuted }
+    }))
+  }, [])
+
+  // Set volume for a track (0-1)
+  const setVolume = useCallback((trackId: string, volume: number) => {
+    const clampedVolume = Math.max(0, Math.min(1, volume))
+    setTracks(prev => prev.map(t => {
+      if (t.id !== trackId) return t
+
+      const gainNode = gainNodesRef.current.get(trackId)
+      if (gainNode && !t.muted) {
+        gainNode.gain.value = clampedVolume
+      }
+
+      return { ...t, volume: clampedVolume }
     }))
   }, [])
 
@@ -343,6 +402,8 @@ export function useAudioPlayer(
     play,
     pause,
     seek,
+    seekAndPlay,
     toggleMute,
+    setVolume,
   }
 }

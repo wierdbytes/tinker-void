@@ -3,7 +3,9 @@
 import { AudioPlayerReturn } from '@/hooks/useAudioPlayer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Play, Pause, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Slider } from '@/components/ui/slider'
+import { Play, Pause, Volume2, Volume1, VolumeX, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ParticipantStyle {
@@ -12,14 +14,25 @@ interface ParticipantStyle {
   badge: string
 }
 
+interface Utterance {
+  id: string
+  startTime: number
+  endTime: number
+  participant: {
+    id: string
+  }
+}
+
 interface MeetingPlayerProps {
   player: AudioPlayerReturn
   participantStyles: Record<string, ParticipantStyle>
+  utterances: Utterance[]
 }
 
 export function MeetingPlayer({
   player,
   participantStyles,
+  utterances,
 }: MeetingPlayerProps) {
   const {
     isPlaying,
@@ -31,6 +44,7 @@ export function MeetingPlayer({
     pause,
     seek,
     toggleMute,
+    setVolume,
   } = player
 
   const formatTime = (seconds: number) => {
@@ -81,30 +95,33 @@ export function MeetingPlayer({
               className="relative h-2 bg-surface-secondary rounded-full cursor-pointer overflow-hidden"
               onClick={handleProgressClick}
             >
-              {/* Track indicators - show when each track is active */}
-              {tracks.map(track => {
+              {/* Utterance segments - colored by speaker */}
+              {utterances.map(utterance => {
                 if (totalDuration === 0) return null
-                const startPercent = (track.offset / totalDuration) * 100
-                const widthPercent = (track.duration / totalDuration) * 100
+                const startPercent = (utterance.startTime / totalDuration) * 100
+                const widthPercent = ((utterance.endTime - utterance.startTime) / totalDuration) * 100
                 return (
                   <div
-                    key={track.id}
+                    key={utterance.id}
                     className={cn(
-                      'absolute h-1 top-0.5 rounded-full opacity-30',
-                      participantStyles[track.participant.id]?.badge || 'bg-primary'
+                      'absolute h-full rounded-sm',
+                      participantStyles[utterance.participant.id]?.badge || 'bg-primary'
                     )}
                     style={{
                       left: `${startPercent}%`,
-                      width: `${widthPercent}%`,
+                      width: `${Math.max(widthPercent, 0.5)}%`,
                     }}
                   />
                 )
               })}
 
-              {/* Progress indicator */}
+              {/* Progress overlay - darkens played portion */}
               <div
-                className="absolute h-full bg-primary rounded-full transition-all duration-75"
-                style={{ width: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%' }}
+                className="absolute h-full bg-background/50 rounded-full pointer-events-none"
+                style={{
+                  left: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%',
+                  right: 0,
+                }}
               />
 
               {/* Seek handle */}
@@ -130,42 +147,72 @@ export function MeetingPlayer({
           </div>
         </div>
 
-        {/* Speaker toggles */}
+        {/* Speaker controls with volume */}
         <div className="flex flex-wrap gap-2">
           {tracks.map(track => {
             const style = participantStyles[track.participant.id]
+            const VolumeIcon = track.muted || track.volume === 0
+              ? VolumeX
+              : track.volume < 0.5
+              ? Volume1
+              : Volume2
+
             return (
-              <button
-                key={track.id}
-                onClick={() => toggleMute(track.id)}
-                disabled={!track.loaded}
-                className={cn(
-                  'flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all',
-                  track.error
-                    ? 'bg-destructive/10 text-destructive'
-                    : track.muted
-                    ? 'bg-surface-secondary text-muted-foreground'
-                    : style?.bg || 'bg-primary/10',
-                  !track.loaded && !track.error && 'opacity-50'
-                )}
-              >
-                {track.error ? (
-                  <span className="text-xs">!</span>
-                ) : track.muted ? (
-                  <VolumeX className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-                <span className={cn(
-                  'text-sm font-medium',
-                  track.muted || track.error ? '' : style?.text
-                )}>
-                  {track.participant.name}
-                </span>
-                {!track.loaded && !track.error && (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                )}
-              </button>
+              <Popover key={track.id}>
+                <PopoverTrigger asChild>
+                  <button
+                    disabled={!track.loaded}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all',
+                      track.error
+                        ? 'bg-destructive/10 text-destructive'
+                        : track.muted
+                        ? 'bg-surface-secondary text-muted-foreground'
+                        : style?.bg || 'bg-primary/10',
+                      !track.loaded && !track.error && 'opacity-50'
+                    )}
+                  >
+                    <VolumeIcon className="w-4 h-4" />
+                    <span className={cn(
+                      'text-sm font-medium',
+                      track.muted || track.error ? '' : style?.text
+                    )}>
+                      {track.participant.name}
+                    </span>
+                    {!track.loaded && !track.error && (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-3" align="start">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{track.participant.name}</span>
+                      <button
+                        onClick={() => toggleMute(track.id)}
+                        className="p-1 rounded hover:bg-surface-secondary transition-colors"
+                      >
+                        <VolumeIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <Slider
+                      value={[track.muted ? 0 : track.volume * 100]}
+                      onValueChange={([value]) => {
+                        if (track.muted && value > 0) {
+                          toggleMute(track.id)
+                        }
+                        setVolume(track.id, value / 100)
+                      }}
+                      max={100}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="text-xs text-muted-foreground text-center">
+                      {track.muted ? 'Выкл' : `${Math.round(track.volume * 100)}%`}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             )
           })}
         </div>

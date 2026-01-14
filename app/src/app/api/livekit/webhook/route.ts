@@ -285,13 +285,21 @@ async function handleEgressEnded(event: any) {
 
   // Process file results
   const fileResults = egressInfo.fileResults || []
+
+  // Get real recording start time from egressInfo (nanoseconds since epoch)
+  const startedAtNs = egressInfo.startedAt || 0n
+  const startedAtMs = Number(startedAtNs) / 1_000_000
+  const recordingStartedAt = startedAtMs > 0 ? new Date(startedAtMs) : null
+
+  console.log(`Egress startedAt: ${startedAtNs} ns = ${startedAtMs} ms = ${recordingStartedAt}`)
+
   for (const file of fileResults) {
     const filename = file.filename || file.filepath || ''
     const fileUrl = file.filepath || file.filename || ''
     const durationNs = file.duration || 0n
     const durationSec = Number(durationNs) / 1_000_000_000
 
-    console.log(`Creating recording: meetingId=${egress.meetingId}, participantId=${egress.participantId}, fileUrl=${fileUrl}, duration=${durationSec}s`)
+    console.log(`Creating recording: meetingId=${egress.meetingId}, participantId=${egress.participantId}, fileUrl=${fileUrl}, duration=${durationSec}s, startedAt=${recordingStartedAt}`)
 
     await prisma.recording.create({
       data: {
@@ -300,6 +308,7 @@ async function handleEgressEnded(event: any) {
         fileUrl: fileUrl,
         fileName: filename,
         duration: durationSec,
+        startedAt: recordingStartedAt,
       },
     })
 
