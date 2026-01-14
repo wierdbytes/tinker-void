@@ -152,28 +152,38 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
       </div>
 
       {/* Controls */}
-      <div className="px-6 py-5 border-t border-border/50 bg-card/50 backdrop-blur-sm">
-        <div className="flex items-center justify-center gap-3 max-w-md mx-auto">
+      <div className="px-6 py-5 border-t border-border/50 bg-card/80 backdrop-blur-md">
+        <div className="flex items-center justify-center gap-4">
+          {/* Mute Button */}
           <Button
-            variant={isMuted ? 'destructive' : 'secondary'}
-            size="lg"
+            variant={isMuted ? 'destructive' : 'ghost'}
+            size="icon"
             onClick={toggleMute}
             className={cn(
-              'rounded-full w-14 h-14 shadow-soft transition-all hover:shadow-soft-lg',
-              !isMuted && 'bg-surface-secondary hover:bg-surface-tertiary'
+              'w-14 h-14 rounded-full transition-all duration-200 hover:scale-105 active:scale-95',
+              isMuted
+                ? 'bg-destructive hover:bg-destructive/90'
+                : 'bg-zinc-700 hover:bg-zinc-600'
             )}
+            title={isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
           >
-            {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            {isMuted ? (
+              <MicOff className="w-6 h-6 text-white" />
+            ) : (
+              <Mic className="w-6 h-6 text-white" />
+            )}
           </Button>
 
+          {/* Settings Button */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
-                variant="secondary"
-                size="lg"
-                className="rounded-full w-14 h-14 bg-surface-secondary hover:bg-surface-tertiary shadow-soft transition-all hover:shadow-soft-lg"
+                variant="ghost"
+                size="icon"
+                className="w-14 h-14 rounded-full bg-zinc-700 hover:bg-zinc-600 transition-all duration-200 hover:scale-105 active:scale-95"
+                title="Настройки аудио"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-6 h-6 text-white" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 bg-card border-border/50 shadow-soft-lg">
@@ -181,13 +191,15 @@ function RoomContent({ roomId, participantName, onLeave }: RoomContentProps) {
             </PopoverContent>
           </Popover>
 
+          {/* Leave Button */}
           <Button
             variant="destructive"
-            size="lg"
+            size="icon"
             onClick={handleLeave}
-            className="rounded-full w-14 h-14 shadow-soft transition-all hover:shadow-soft-lg"
+            className="w-14 h-14 rounded-full bg-destructive hover:bg-destructive/90 transition-all duration-200 hover:scale-105 active:scale-95"
+            title="Покинуть встречу"
           >
-            <PhoneOff className="w-5 h-5" />
+            <PhoneOff className="w-6 h-6 text-white" />
           </Button>
         </div>
       </div>
