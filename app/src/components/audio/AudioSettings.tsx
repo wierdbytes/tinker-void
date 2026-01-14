@@ -6,17 +6,13 @@ import { DeviceSelect } from './DeviceSelect'
 import { AudioLevelMeter } from './AudioLevelMeter'
 import { useAudioDevices } from './useAudioDevices'
 import { Button } from '@/components/ui/button'
-import { Mic, MicOff, AlertCircle } from 'lucide-react'
+import { Mic, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AudioSettingsProps {
-  /** LiveKit room instance (pass when in-call, omit when pre-join) */
   room?: Room | null
-  /** Callback when devices are selected (for pre-join mode) */
   onDevicesChange?: (devices: { audioInputDeviceId: string; audioOutputDeviceId: string }) => void
-  /** Additional className */
   className?: string
-  /** Compact mode (no title) */
   compact?: boolean
 }
 
@@ -40,7 +36,6 @@ export function AudioSettings({
     requestPermission,
   } = useAudioDevices(room)
 
-  // Notify parent of device changes
   useEffect(() => {
     if (onDevicesChange && selectedInputId) {
       onDevicesChange({
@@ -60,12 +55,17 @@ export function AudioSettings({
 
   if (permissionError) {
     return (
-      <div className={cn('space-y-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700', className)}>
-        <div className="flex items-center gap-2 text-red-400">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span className="text-sm">{permissionError}</span>
+      <div className={cn('space-y-4 p-4 rounded-xl bg-destructive/5 border border-destructive/20', className)}>
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="w-4 h-4 text-destructive" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-destructive">Доступ запрещён</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{permissionError}</p>
+          </div>
         </div>
-        <Button onClick={requestPermission} variant="outline" size="sm">
+        <Button onClick={requestPermission} variant="outline" size="sm" className="w-full">
           Попробовать снова
         </Button>
       </div>
@@ -74,19 +74,24 @@ export function AudioSettings({
 
   if (!permissionGranted) {
     return (
-      <div className={cn('space-y-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700', className)}>
-        <div className="flex items-center gap-2 text-gray-400">
-          <Mic className="w-5 h-5 animate-pulse" />
-          <span className="text-sm">Запрос доступа к микрофону...</span>
+      <div className={cn('space-y-3 p-4 rounded-xl bg-surface-secondary', className)}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Mic className="w-4 h-4 text-primary animate-pulse" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Запрос доступа</p>
+            <p className="text-xs text-muted-foreground">Разрешите доступ к микрофону</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={cn('space-y-4', !compact && 'p-4 bg-gray-800/50 rounded-lg border border-gray-700', className)}>
+    <div className={cn('space-y-4', !compact && 'p-4 rounded-xl bg-surface-secondary', className)}>
       {!compact && (
-        <h3 className="text-sm font-medium text-white">Настройки аудио</h3>
+        <h3 className="text-sm font-medium text-foreground">Настройки аудио</h3>
       )}
 
       <DeviceSelect
@@ -98,7 +103,7 @@ export function AudioSettings({
       />
 
       <div className="space-y-2">
-        <span className="text-xs text-gray-400">Уровень сигнала</span>
+        <span className="text-xs text-muted-foreground">Уровень сигнала</span>
         <AudioLevelMeter stream={previewStream} />
       </div>
 

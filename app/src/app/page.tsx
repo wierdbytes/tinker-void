@@ -3,17 +3,30 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AudioSettings } from '@/components/audio'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Video, Users, History, Settings, ChevronDown } from 'lucide-react'
+import { Mic, Users, History, Settings, ChevronDown, ArrowRight } from 'lucide-react'
 
 interface AudioDevices {
   audioInputDeviceId: string
   audioOutputDeviceId: string
+}
+
+function SoundWaveIcon({ className }: { className?: string }) {
+  return (
+    <div className={`flex items-end gap-0.5 h-6 ${className}`}>
+      <div className="w-1 bg-current rounded-full sound-wave" style={{ height: '40%' }} />
+      <div className="w-1 bg-current rounded-full sound-wave sound-wave-delay-1" style={{ height: '70%' }} />
+      <div className="w-1 bg-current rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
+      <div className="w-1 bg-current rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
+      <div className="w-1 bg-current rounded-full sound-wave" style={{ height: '30%' }} />
+    </div>
+  )
 }
 
 export default function HomePage() {
@@ -59,128 +72,178 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-            <Video className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">TinkerDesk</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Голосовые встречи с транскрибацией
-          </p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Начать встречу</CardTitle>
-            <CardDescription>
-              Создайте новую комнату или присоединитесь к существующей
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="create" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="create">Создать</TabsTrigger>
-                <TabsTrigger value="join">Присоединиться</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="create" className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="userName">Ваше имя</Label>
-                  <Input
-                    id="userName"
-                    placeholder="Введите ваше имя"
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="roomName">Название комнаты</Label>
-                  <Input
-                    id="roomName"
-                    placeholder="Например: Дейли стендап"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                  />
-                </div>
-                <Collapsible>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-between px-4 py-2 h-auto">
-                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Settings className="w-4 h-4" />
-                        Настройки аудио
-                      </span>
-                      <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <AudioSettings onDevicesChange={handleDevicesChange} className="mt-2" />
-                  </CollapsibleContent>
-                </Collapsible>
-                <Button
-                  className="w-full"
-                  onClick={createRoom}
-                  disabled={!roomName.trim() || !userName.trim() || isLoading}
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  {isLoading ? 'Создание...' : 'Создать комнату'}
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="join" className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="joinUserName">Ваше имя</Label>
-                  <Input
-                    id="joinUserName"
-                    placeholder="Введите ваше имя"
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="roomId">ID комнаты</Label>
-                  <Input
-                    id="roomId"
-                    placeholder="Вставьте ID комнаты"
-                    value={roomId}
-                    onChange={(e) => setRoomId(e.target.value)}
-                  />
-                </div>
-                <Collapsible>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-between px-4 py-2 h-auto">
-                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Settings className="w-4 h-4" />
-                        Настройки аудио
-                      </span>
-                      <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <AudioSettings onDevicesChange={handleDevicesChange} className="mt-2" />
-                  </CollapsibleContent>
-                </Collapsible>
-                <Button
-                  className="w-full"
-                  onClick={joinRoom}
-                  disabled={!roomId.trim() || !userName.trim()}
-                >
-                  <Video className="w-4 h-4 mr-2" />
-                  Присоединиться
-                </Button>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-
-        <div className="mt-4 text-center">
-          <Button variant="ghost" onClick={() => router.push('/meetings')}>
-            <History className="w-4 h-4 mr-2" />
-            История встреч
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
+        <div className="absolute -bottom-1/2 -left-1/4 w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-primary/5 to-transparent blur-3xl" />
       </div>
+
+      {/* Header */}
+      <header className="relative z-10 px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-end gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/meetings')}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <History className="w-4 h-4 mr-2" />
+            История
+          </Button>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="relative z-10 px-6 py-12">
+        <div className="max-w-md mx-auto">
+          {/* Hero section */}
+          <div className="text-center mb-10 fade-in-up">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 mb-6 glow-primary">
+              <SoundWaveIcon className="text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold text-foreground mb-3 tracking-tight">
+              Tinker Desk
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              создайте своё пространство
+            </p>
+          </div>
+
+          {/* Main card */}
+          <Card className="shadow-soft-lg border-border/50 fade-in-up fade-in-delay-1">
+            <CardContent className="p-6">
+              <Tabs defaultValue="create" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6 bg-surface-secondary p-1 rounded-lg">
+                  <TabsTrigger
+                    value="create"
+                    className="rounded-md data-[state=active]:bg-card data-[state=active]:shadow-soft"
+                  >
+                    Создать
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="join"
+                    className="rounded-md data-[state=active]:bg-card data-[state=active]:shadow-soft"
+                  >
+                    Присоединиться
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="create" className="space-y-5 mt-0">
+                  <div className="space-y-2">
+                    <Label htmlFor="userName" className="text-sm font-medium">
+                      Ваше имя
+                    </Label>
+                    <Input
+                      id="userName"
+                      placeholder="Как вас называть?"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="roomName" className="text-sm font-medium">
+                      Название встречи
+                    </Label>
+                    <Input
+                      id="roomName"
+                      placeholder="Например: Дейли стендап"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
+                      >
+                        <span className="flex items-center gap-2 text-sm">
+                          <Settings className="w-4 h-4" />
+                          Настройки аудио
+                        </span>
+                        <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-3">
+                      <AudioSettings onDevicesChange={handleDevicesChange} />
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Button
+                    className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
+                    onClick={createRoom}
+                    disabled={!roomName.trim() || !userName.trim() || isLoading}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    {isLoading ? 'Создание...' : 'Создать комнату'}
+                    {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+                  </Button>
+                </TabsContent>
+
+                <TabsContent value="join" className="space-y-5 mt-0">
+                  <div className="space-y-2">
+                    <Label htmlFor="joinUserName" className="text-sm font-medium">
+                      Ваше имя
+                    </Label>
+                    <Input
+                      id="joinUserName"
+                      placeholder="Как вас называть?"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="roomId" className="text-sm font-medium">
+                      ID комнаты
+                    </Label>
+                    <Input
+                      id="roomId"
+                      placeholder="Вставьте ID или ссылку"
+                      value={roomId}
+                      onChange={(e) => setRoomId(e.target.value)}
+                      className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors font-mono text-sm"
+                    />
+                  </div>
+
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
+                      >
+                        <span className="flex items-center gap-2 text-sm">
+                          <Settings className="w-4 h-4" />
+                          Настройки аудио
+                        </span>
+                        <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-3">
+                      <AudioSettings onDevicesChange={handleDevicesChange} />
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Button
+                    className="w-full h-11 bg-primary btn-primary-hover text-primary-foreground font-medium shadow-soft transition-all hover:shadow-soft-lg"
+                    onClick={joinRoom}
+                    disabled={!roomId.trim() || !userName.trim()}
+                  >
+                    <Mic className="w-4 h-4 mr-2" />
+                    Присоединиться
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }

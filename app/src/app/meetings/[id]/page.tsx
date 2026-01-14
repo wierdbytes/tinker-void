@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowLeft, Calendar, Users, Clock, Loader2 } from 'lucide-react'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Participant {
   id: string
@@ -29,7 +31,6 @@ interface GroupedUtterance {
   participant: Participant
 }
 
-// Group utterances by participant and sentences (or 10 second chunks)
 function groupUtterances(utterances: Utterance[]): GroupedUtterance[] {
   if (utterances.length === 0) return []
 
@@ -39,10 +40,6 @@ function groupUtterances(utterances: Utterance[]): GroupedUtterance[] {
   for (const utterance of utterances) {
     const endsWithSentence = /[.!?]$/.test(utterance.text.trim())
 
-    // Start new group if:
-    // 1. No current group
-    // 2. Different participant
-    // 3. Gap > 10 seconds from group start
     const shouldStartNew =
       !currentGroup ||
       currentGroup.participant.id !== utterance.participant.id ||
@@ -59,20 +56,17 @@ function groupUtterances(utterances: Utterance[]): GroupedUtterance[] {
         endTime: utterance.endTime,
         participant: utterance.participant,
       }
-    } else {
-      // Append to current group
+    } else if (currentGroup) {
       currentGroup.text += ' ' + utterance.text
       currentGroup.endTime = utterance.endTime
     }
 
-    // End group if sentence ends (but continue if within 10 seconds)
     if (endsWithSentence && currentGroup) {
       result.push(currentGroup)
       currentGroup = null
     }
   }
 
-  // Don't forget the last group
   if (currentGroup) {
     result.push(currentGroup)
   }
@@ -91,6 +85,16 @@ interface Meeting {
   participants: Participant[]
   utterances: Utterance[]
 }
+
+// Modern gradient pairs for participants
+const participantGradients = [
+  { bg: 'bg-gradient-to-r from-teal-500/10 to-cyan-500/10', text: 'text-teal-600 dark:text-teal-400', badge: 'bg-teal-500' },
+  { bg: 'bg-gradient-to-r from-violet-500/10 to-purple-500/10', text: 'text-violet-600 dark:text-violet-400', badge: 'bg-violet-500' },
+  { bg: 'bg-gradient-to-r from-rose-500/10 to-pink-500/10', text: 'text-rose-600 dark:text-rose-400', badge: 'bg-rose-500' },
+  { bg: 'bg-gradient-to-r from-amber-500/10 to-orange-500/10', text: 'text-amber-600 dark:text-amber-400', badge: 'bg-amber-500' },
+  { bg: 'bg-gradient-to-r from-emerald-500/10 to-green-500/10', text: 'text-emerald-600 dark:text-emerald-400', badge: 'bg-emerald-500' },
+  { bg: 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10', text: 'text-blue-600 dark:text-blue-400', badge: 'bg-blue-500' },
+]
 
 export default function MeetingDetailPage() {
   const params = useParams()
@@ -151,118 +155,171 @@ export default function MeetingDetailPage() {
   }
 
   // Generate participant colors
-  const participantColors: Record<string, string> = {}
-  const colors = [
-    'bg-blue-100 text-blue-800',
-    'bg-green-100 text-green-800',
-    'bg-purple-100 text-purple-800',
-    'bg-orange-100 text-orange-800',
-    'bg-pink-100 text-pink-800',
-    'bg-teal-100 text-teal-800',
-  ]
-
+  const participantStyles: Record<string, typeof participantGradients[0]> = {}
   meeting?.participants.forEach((p, i) => {
-    participantColors[p.id] = colors[i % colors.length]
+    participantStyles[p.id] = participantGradients[i % participantGradients.length]
   })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Загрузка...</p>
+        </div>
       </div>
     )
   }
 
   if (!meeting) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="p-6 text-center">
-          <p className="text-gray-500 mb-4">Встреча не найдена</p>
-          <Button onClick={() => router.push('/meetings')}>Вернуться к списку</Button>
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="max-w-sm w-full border-border/50 shadow-soft">
+          <CardContent className="py-12 text-center">
+            <div className="w-12 h-12 rounded-xl bg-surface-secondary flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground mb-4">Встреча не найдена</p>
+            <Button onClick={() => router.push('/meetings')}>Вернуться к списку</Button>
+          </CardContent>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto py-8 px-4 max-w-5xl">
-        {/* Header */}
-        <div className="mb-8">
-          <Button variant="ghost" onClick={() => router.push('/meetings')} className="mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            К списку встреч
-          </Button>
-
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{meeting.room.name}</h1>
-
-          <div className="flex flex-wrap items-center gap-6 mt-4 text-gray-600 dark:text-gray-400">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              {formatDate(meeting.startedAt)}
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              {formatDuration(meeting.startedAt, meeting.endedAt)}
-            </div>
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              {meeting.participants.length} участников
-            </div>
-          </div>
-
-          {/* Participants */}
-          <div className="flex flex-wrap gap-2 mt-4">
-            {meeting.participants.map((p) => (
-              <span
-                key={p.id}
-                className={`px-3 py-1 rounded-full text-sm font-medium ${participantColors[p.id]}`}
-              >
-                {p.name}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Transcript */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Транскрипт</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {meeting.utterances.length > 0 ? (
-              <ScrollArea className="h-[600px] pr-4">
-                <div className="space-y-4">
-                  {groupUtterances(meeting.utterances).map((utterance) => (
-                    <div key={utterance.id} className="flex gap-4">
-                      <div className="text-xs text-gray-400 font-mono w-12 flex-shrink-0 pt-1">
-                        {formatTime(utterance.startTime)}
-                      </div>
-                      <div className="flex-1">
-                        <div
-                          className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-1 ${
-                            participantColors[utterance.participant.id]
-                          }`}
-                        >
-                          {utterance.participant.name}
-                        </div>
-                        <p className="text-gray-800 dark:text-gray-200">{utterance.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            ) : meeting.status === 'PROCESSING' ? (
-              <div className="flex items-center gap-2 text-gray-500">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Транскрипт формируется...</span>
-              </div>
-            ) : (
-              <p className="text-gray-500">Транскрипт недоступен</p>
-            )}
-          </CardContent>
-        </Card>
+    <div className="min-h-screen bg-background">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
       </div>
+
+      {/* Header */}
+      <header className="relative z-10 px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/meetings')}
+            className="text-muted-foreground hover:text-foreground -ml-2"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            К списку
+          </Button>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="relative z-10 px-6 py-8">
+        <div className="max-w-5xl mx-auto">
+          {/* Meeting header */}
+          <div className="mb-8 fade-in-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Waves className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">{meeting.room.name}</h1>
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>{formatDate(meeting.startedAt)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Meeting stats */}
+            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-secondary">
+                <Clock className="w-4 h-4" />
+                <span>{formatDuration(meeting.startedAt, meeting.endedAt)}</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-secondary">
+                <Users className="w-4 h-4" />
+                <span>{meeting.participants.length} участников</span>
+              </div>
+              {meeting.utterances.length > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary">
+                  <FileText className="w-4 h-4" />
+                  <span>{meeting.utterances.length} фраз</span>
+                </div>
+              )}
+            </div>
+
+            {/* Participants */}
+            <div className="flex flex-wrap gap-2 mt-5">
+              {meeting.participants.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-secondary"
+                >
+                  <div className={cn('w-2 h-2 rounded-full', participantStyles[p.id]?.badge)} />
+                  <span className="text-sm font-medium text-foreground">{p.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Transcript */}
+          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-1">
+            <CardContent className="p-0">
+              <div className="px-6 py-4 border-b border-border/50">
+                <h2 className="font-semibold text-foreground">Транскрипт</h2>
+              </div>
+
+              {meeting.utterances.length > 0 ? (
+                <ScrollArea className="h-[600px]">
+                  <div className="p-6 space-y-4">
+                    {groupUtterances(meeting.utterances).map((utterance) => {
+                      const style = participantStyles[utterance.participant.id]
+                      return (
+                        <div
+                          key={utterance.id}
+                          className={cn(
+                            'flex gap-4 p-4 rounded-xl transition-colors',
+                            style?.bg
+                          )}
+                        >
+                          <div className="text-xs text-muted-foreground font-mono w-12 flex-shrink-0 pt-0.5">
+                            {formatTime(utterance.startTime)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className={cn('w-1.5 h-1.5 rounded-full', style?.badge)} />
+                              <span className={cn('text-sm font-medium', style?.text)}>
+                                {utterance.participant.name}
+                              </span>
+                            </div>
+                            <p className="text-foreground leading-relaxed">
+                              {utterance.text}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              ) : meeting.status === 'PROCESSING' ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Транскрипт формируется...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-20">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-surface-secondary flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">Транскрипт недоступен</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }

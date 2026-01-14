@@ -53,12 +53,33 @@ export function AudioLevelMeter({ stream, className }: AudioLevelMeterProps) {
     }
   }, [stream])
 
+  // Create segmented bars
+  const segments = 20
+  const activeSegments = Math.round(level * segments)
+
   return (
-    <div className={cn('h-2 bg-gray-700 rounded-full overflow-hidden', className)}>
-      <div
-        className="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 transition-all duration-75"
-        style={{ width: `${level * 100}%` }}
-      />
+    <div className={cn('flex items-center gap-0.5 h-3', className)}>
+      {Array.from({ length: segments }).map((_, i) => {
+        const isActive = i < activeSegments
+        const isHigh = i >= segments * 0.7
+        const isMedium = i >= segments * 0.5 && i < segments * 0.7
+
+        return (
+          <div
+            key={i}
+            className={cn(
+              'flex-1 h-full rounded-sm transition-all duration-75',
+              isActive
+                ? isHigh
+                  ? 'bg-destructive'
+                  : isMedium
+                  ? 'bg-warning'
+                  : 'bg-primary'
+                : 'bg-surface-tertiary'
+            )}
+          />
+        )
+      })}
     </div>
   )
 }

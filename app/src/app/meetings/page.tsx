@@ -2,10 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Calendar, Users, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import {
+  ArrowLeft,
+  Calendar,
+  Users,
+  Clock,
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+  FileText,
+  Waves,
+  Radio,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Meeting {
@@ -27,26 +38,43 @@ interface Meeting {
   }
 }
 
-const statusLabels = {
-  IN_PROGRESS: 'В процессе',
-  PROCESSING: 'Обработка',
-  COMPLETED: 'Завершена',
-  FAILED: 'Ошибка',
+const statusConfig = {
+  IN_PROGRESS: {
+    label: 'В процессе',
+    icon: Radio,
+    color: 'text-primary',
+    bg: 'bg-primary/10',
+    animate: true,
+  },
+  PROCESSING: {
+    label: 'Обработка',
+    icon: Loader2,
+    color: 'text-warning',
+    bg: 'bg-warning/10',
+    animate: true,
+  },
+  COMPLETED: {
+    label: 'Завершена',
+    icon: CheckCircle,
+    color: 'text-success',
+    bg: 'bg-success/10',
+    animate: false,
+  },
+  FAILED: {
+    label: 'Ошибка',
+    icon: AlertCircle,
+    color: 'text-destructive',
+    bg: 'bg-destructive/10',
+    animate: false,
+  },
 }
 
-const statusIcons = {
-  IN_PROGRESS: Loader2,
-  PROCESSING: Loader2,
-  COMPLETED: CheckCircle,
-  FAILED: AlertCircle,
-}
-
-const statusColors = {
-  IN_PROGRESS: 'text-blue-500',
-  PROCESSING: 'text-yellow-500',
-  COMPLETED: 'text-green-500',
-  FAILED: 'text-red-500',
-}
+const filterTabs = [
+  { value: 'all', label: 'Все' },
+  { value: 'COMPLETED', label: 'Завершённые' },
+  { value: 'PROCESSING', label: 'В обработке' },
+  { value: 'IN_PROGRESS', label: 'Активные' },
+]
 
 export default function MeetingsPage() {
   const router = useRouter()
@@ -99,104 +127,163 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto py-8 px-4">
-        <div className="mb-8">
-          <Button variant="ghost" onClick={() => router.push('/')} className="mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            На главную
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">История встреч</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Просмотр записей, транскриптов и резюме прошедших встреч
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
+      </div>
 
-        <Tabs value={filter} onValueChange={setFilter} className="mb-6">
-          <TabsList>
-            <TabsTrigger value="all">Все</TabsTrigger>
-            <TabsTrigger value="COMPLETED">Завершённые</TabsTrigger>
-            <TabsTrigger value="PROCESSING">В обработке</TabsTrigger>
-            <TabsTrigger value="IN_PROGRESS">Активные</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      {/* Header */}
+      <header className="relative z-10 px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/')}
+              className="text-muted-foreground hover:text-foreground -ml-2"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Назад
+            </Button>
           </div>
-        ) : meetings.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-gray-500">Встречи не найдены</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {meetings.map((meeting) => {
-              const StatusIcon = statusIcons[meeting.status]
-              return (
-                <Card
-                  key={meeting.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => router.push(`/meetings/${meeting.id}`)}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{meeting.room.name}</CardTitle>
-                        <CardDescription className="flex items-center gap-2 mt-1">
-                          <Calendar className="w-4 h-4" />
-                          {formatDate(meeting.startedAt)}
-                        </CardDescription>
-                      </div>
-                      <div className={cn('flex items-center gap-1', statusColors[meeting.status])}>
-                        <StatusIcon
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="relative z-10 px-6 py-8">
+        <div className="max-w-5xl mx-auto">
+          {/* Page header */}
+          <div className="mb-8 fade-in-up">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Waves className="w-5 h-5 text-primary" />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground">История встреч</h1>
+            </div>
+            <p className="text-muted-foreground">
+              Записи, транскрипты и резюме прошедших встреч
+            </p>
+          </div>
+
+          {/* Filter tabs */}
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 fade-in-up fade-in-delay-1">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setFilter(tab.value)}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
+                  filter === tab.value
+                    ? 'bg-primary text-primary-foreground shadow-soft'
+                    : 'bg-surface-secondary text-muted-foreground hover:text-foreground hover:bg-surface-tertiary'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Meetings list */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Загрузка...</p>
+              </div>
+            </div>
+          ) : meetings.length === 0 ? (
+            <Card className="border-border/50 shadow-soft fade-in-up">
+              <CardContent className="py-16 text-center">
+                <div className="w-12 h-12 rounded-xl bg-surface-secondary flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground">Встречи не найдены</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {meetings.map((meeting, index) => {
+                const config = statusConfig[meeting.status]
+                const StatusIcon = config.icon
+                return (
+                  <Card
+                    key={meeting.id}
+                    className={cn(
+                      'border-border/50 shadow-soft cursor-pointer transition-all hover:shadow-soft-lg hover:border-border fade-in-up',
+                      `fade-in-delay-${Math.min(index + 1, 4)}`
+                    )}
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                    onClick={() => router.push(`/meetings/${meeting.id}`)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-foreground truncate mb-1">
+                            {meeting.room.name}
+                          </h3>
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>{formatDate(meeting.startedAt)}</span>
+                          </div>
+                        </div>
+                        <div
                           className={cn(
-                            'w-4 h-4',
-                            (meeting.status === 'IN_PROGRESS' || meeting.status === 'PROCESSING') &&
-                              'animate-spin'
+                            'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium',
+                            config.bg,
+                            config.color
                           )}
-                        />
-                        <span className="text-sm font-medium">{statusLabels[meeting.status]}</span>
+                        >
+                          <StatusIcon
+                            className={cn('w-3.5 h-3.5', config.animate && 'animate-spin')}
+                          />
+                          <span>{config.label}</span>
+                        </div>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        {meeting.participants.length} участник(ов)
+
+                      <div className="flex items-center gap-5 mt-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>{meeting.participants.length}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{formatDuration(meeting.startedAt, meeting.endedAt)}</span>
+                        </div>
+                        {meeting._count.utterances > 0 && (
+                          <div className="flex items-center gap-1.5 text-primary">
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>{meeting._count.utterances} фраз</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {formatDuration(meeting.startedAt, meeting.endedAt)}
-                      </div>
-                      {meeting._count.utterances > 0 && (
-                        <div className="text-primary">
-                          {meeting._count.utterances} фраз в транскрипте
+
+                      {meeting.participants.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-4">
+                          {meeting.participants.slice(0, 5).map((p) => (
+                            <span
+                              key={p.id}
+                              className="px-2 py-0.5 bg-surface-secondary rounded-md text-xs text-muted-foreground"
+                            >
+                              {p.name}
+                            </span>
+                          ))}
+                          {meeting.participants.length > 5 && (
+                            <span className="px-2 py-0.5 bg-surface-secondary rounded-md text-xs text-muted-foreground">
+                              +{meeting.participants.length - 5}
+                            </span>
+                          )}
                         </div>
                       )}
-                    </div>
-                    {meeting.participants.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {meeting.participants.map((p) => (
-                          <span
-                            key={p.id}
-                            className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-xs"
-                          >
-                            {p.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        )}
-      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }

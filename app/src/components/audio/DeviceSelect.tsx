@@ -31,7 +31,7 @@ export function DeviceSelect({
 
   return (
     <div className="space-y-2">
-      <Label className="flex items-center gap-2 text-sm text-gray-300">
+      <Label className="flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="w-4 h-4" />
         {label}
       </Label>
@@ -40,15 +40,15 @@ export function DeviceSelect({
         onValueChange={onDeviceChange}
         disabled={disabled || devices.length === 0}
       >
-        <SelectTrigger className="w-full bg-gray-800 border-gray-600 text-white">
+        <SelectTrigger className="w-full bg-surface-primary border-border/50 text-foreground hover:border-border transition-colors">
           <SelectValue placeholder={`Выберите ${kind === 'audioinput' ? 'микрофон' : 'динамики'}`} />
         </SelectTrigger>
-        <SelectContent className="bg-gray-800 border-gray-600">
+        <SelectContent className="bg-card border-border/50 shadow-soft-lg">
           {devices.map((device) => (
             <SelectItem
               key={device.deviceId}
               value={device.deviceId}
-              className="text-white hover:bg-gray-700 focus:bg-gray-700"
+              className="text-foreground focus:bg-surface-secondary"
             >
               {device.label || `${kind === 'audioinput' ? 'Микрофон' : 'Динамики'} ${device.deviceId.slice(0, 8)}`}
             </SelectItem>
