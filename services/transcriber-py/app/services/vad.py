@@ -1,9 +1,14 @@
 """Silero VAD service for accurate speech segmentation."""
 
 import logging
+import subprocess
+import tempfile
+import os
+
 import torch
-import torchaudio
-from typing import List, Tuple, Optional
+import soundfile as sf
+import numpy as np
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -53,44 +58,70 @@ class SileroVAD:
         if self.model is None:
             self.load_model()
 
-        # Load audio
-        wav, sr = torchaudio.load(audio_path)
+        # Convert to 16kHz mono WAV using ffmpeg if needed
+        wav_path = self._ensure_wav_16k(audio_path)
 
-        # Convert to mono if stereo
-        if wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
+        try:
+            # Load audio with soundfile
+            data, sr = sf.read(wav_path)
 
-        # Resample to 16kHz if needed
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            wav = resampler(wav)
+            # Convert to mono if stereo
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
 
-        # Squeeze to 1D
-        wav = wav.squeeze()
+            # Convert to torch tensor
+            wav = torch.from_numpy(data).float()
 
-        # Get speech timestamps using Silero VAD
-        get_speech_timestamps = self.utils[0]
+            # Get speech timestamps using Silero VAD
+            get_speech_timestamps = self.utils[0]
 
-        speech_timestamps = get_speech_timestamps(
-            wav,
-            self.model,
-            threshold=threshold,
-            sampling_rate=self.sample_rate,
-            min_speech_duration_ms=min_speech_duration_ms,
-            min_silence_duration_ms=min_silence_duration_ms,
-            speech_pad_ms=speech_pad_ms,
-        )
+            speech_timestamps = get_speech_timestamps(
+                wav,
+                self.model,
+                threshold=threshold,
+                sampling_rate=self.sample_rate,
+                min_speech_duration_ms=min_speech_duration_ms,
+                min_silence_duration_ms=min_silence_duration_ms,
+                speech_pad_ms=speech_pad_ms,
+            )
 
-        # Convert sample indices to seconds
-        segments = []
-        for ts in speech_timestamps:
-            segments.append({
-                'start': round(ts['start'] / self.sample_rate, 3),
-                'end': round(ts['end'] / self.sample_rate, 3),
-            })
+            # Convert sample indices to seconds
+            segments = []
+            for ts in speech_timestamps:
+                segments.append({
+                    'start': round(ts['start'] / self.sample_rate, 3),
+                    'end': round(ts['end'] / self.sample_rate, 3),
+                })
 
-        logger.info(f"VAD detected {len(segments)} speech segments")
-        return segments
+            logger.info(f"VAD detected {len(segments)} speech segments")
+            return segments
+
+        finally:
+            # Cleanup temp file if we created one
+            if wav_path != audio_path and os.path.exists(wav_path):
+                os.unlink(wav_path)
+
+    def _ensure_wav_16k(self, audio_path: str) -> str:
+        """Convert audio to 16kHz mono WAV if needed."""
+        # Check if already 16kHz WAV
+        try:
+            info = sf.info(audio_path)
+            if info.samplerate == 16000 and info.channels == 1:
+                return audio_path
+        except Exception:
+            pass  # Not a valid soundfile, need conversion
+
+        # Convert with ffmpeg
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        subprocess.run([
+            'ffmpeg', '-y', '-i', audio_path,
+            '-ar', '16000', '-ac', '1',
+            '-f', 'wav', tmp_path
+        ], capture_output=True, check=True)
+
+        return tmp_path
 
     def merge_short_segments(
         self,
