@@ -19,6 +19,10 @@ s3:
   bucket: recordings
   force_path_style: true
 
+# CPU cost configuration for concurrent egress limits
+cpu_cost:
+  track_cpu_cost: 0.25
+
 # Logging
 log_level: info
 
