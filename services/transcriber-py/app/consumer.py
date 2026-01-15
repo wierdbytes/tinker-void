@@ -137,20 +137,25 @@ class TranscriptionConsumer:
                 )
 
     async def _transcribe_file(self, file_url: str) -> dict:
-        """Download and transcribe a file."""
+        """Download and transcribe a file.
+
+        Uses async transcription to avoid blocking the event loop,
+        which is critical for maintaining RabbitMQ heartbeats and HTTP health checks.
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             audio_file = temp_path / "audio.ogg"
 
-            # Download
+            # Download (async)
             await self.storage.download_file(file_url, audio_file)
 
-            # Convert to WAV
+            # Convert to WAV (async - uses asyncio subprocess)
             wav_file = await convert_to_wav(audio_file)
 
             try:
-                # Transcribe
-                result = self.transcriber.transcribe(
+                # Transcribe (async - runs in thread pool executor)
+                # This is the key fix: CPU-bound work doesn't block event loop
+                result = await self.transcriber.transcribe_async(
                     str(wav_file),
                     language=self.settings.default_language,
                 )
@@ -182,7 +187,12 @@ async def start_consumer(
     global _consumer
 
     settings = get_settings()
-    rabbitmq = await get_rabbitmq_service(settings.rabbitmq_url)
+
+    # Connect with configured heartbeat to handle long transcriptions
+    rabbitmq = await get_rabbitmq_service(
+        settings.rabbitmq_url,
+        heartbeat=settings.rabbitmq_heartbeat,
+    )
 
     _consumer = TranscriptionConsumer(transcriber, storage, rabbitmq)
 

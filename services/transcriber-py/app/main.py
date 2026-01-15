@@ -9,7 +9,11 @@ from app.consumer import start_consumer, stop_consumer
 from app.models.schemas import HealthResponse
 from app.services.rabbitmq import close_rabbitmq_service
 from app.services.storage import StorageService
-from app.services.transcriber import TranscriberService
+from app.services.transcriber import (
+    TranscriberService,
+    get_transcription_executor,
+    shutdown_transcription_executor,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +33,10 @@ async def lifespan(app: FastAPI):
 
     settings = get_settings()
 
+    # Initialize transcription thread pool
+    logger.info(f"Initializing transcription executor with {settings.transcription_workers} workers...")
+    get_transcription_executor(max_workers=settings.transcription_workers)
+
     # Initialize transcriber
     logger.info("Initializing transcriber service...")
     transcriber = TranscriberService()
@@ -46,7 +54,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Start RabbitMQ consumer
-    logger.info("Starting RabbitMQ consumer...")
+    logger.info(f"Starting RabbitMQ consumer (heartbeat={settings.rabbitmq_heartbeat}s)...")
     await start_consumer(transcriber, storage)
     logger.info("RabbitMQ consumer started!")
 
@@ -58,6 +66,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     await stop_consumer()
     await close_rabbitmq_service()
+    shutdown_transcription_executor()
     logger.info("Services shut down")
 
 

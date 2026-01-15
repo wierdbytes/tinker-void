@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 
 async def convert_to_wav(input_path: Path, sample_rate: int = 16000) -> Path:
     """Convert audio file to WAV format for Whisper.
+
+    Uses asyncio subprocess to avoid blocking the event loop during conversion.
 
     Args:
         input_path: Path to input audio file
@@ -27,26 +29,25 @@ async def convert_to_wav(input_path: Path, sample_rate: int = 16000) -> Path:
 
     logger.info(f"Converting {input_path} to WAV format")
 
-    # Run ffmpeg conversion
-    cmd = [
+    # Run ffmpeg conversion asynchronously
+    process = await asyncio.create_subprocess_exec(
         "ffmpeg",
-        "-i",
-        str(input_path),
-        "-ar",
-        str(sample_rate),  # 16kHz sample rate
-        "-ac",
-        "1",  # Mono
-        "-f",
-        "wav",  # WAV format
+        "-i", str(input_path),
+        "-ar", str(sample_rate),  # 16kHz sample rate
+        "-ac", "1",  # Mono
+        "-f", "wav",  # WAV format
         "-y",  # Overwrite
         str(output_path),
-    ]
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
-    process = subprocess.run(cmd, capture_output=True, text=True)
+    _, stderr = await process.communicate()
 
     if process.returncode != 0:
-        logger.error(f"ffmpeg error: {process.stderr}")
-        raise RuntimeError(f"Audio conversion failed: {process.stderr}")
+        error_msg = stderr.decode() if stderr else "Unknown error"
+        logger.error(f"ffmpeg error: {error_msg}")
+        raise RuntimeError(f"Audio conversion failed: {error_msg}")
 
     logger.info(f"Converted to {output_path}")
     return output_path

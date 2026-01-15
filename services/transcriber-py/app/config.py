@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # RabbitMQ
     rabbitmq_url: str = "amqp://tinkervoid:tinkervoid_secret@rabbitmq:5672/"
+    rabbitmq_heartbeat: int = 300  # 5 minutes - allows long transcriptions without disconnect
     callback_base_url: str = "http://app:3000"
     callback_timeout: int = 30
 
@@ -28,6 +29,9 @@ class Settings(BaseSettings):
     model_size: str = "large-v3"
     model_path: str = "/app/models"
     cpu_threads: int = 4
+
+    # Worker settings
+    transcription_workers: int = 1  # Number of parallel transcription threads
 
     # Transcription defaults
     default_language: str = "ru"

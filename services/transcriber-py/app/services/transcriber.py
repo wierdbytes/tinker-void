@@ -1,12 +1,39 @@
 """Transcription service using faster-whisper with sentence splitting."""
 
+import asyncio
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List
 
 from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for CPU-bound transcription work
+# Using ThreadPoolExecutor because faster-whisper releases GIL during inference
+_transcription_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_transcription_executor(max_workers: int = 1) -> ThreadPoolExecutor:
+    """Get or create thread pool executor for transcription."""
+    global _transcription_executor
+    if _transcription_executor is None:
+        _transcription_executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="transcriber-"
+        )
+        logger.info(f"Created transcription thread pool with {max_workers} workers")
+    return _transcription_executor
+
+
+def shutdown_transcription_executor() -> None:
+    """Shutdown the transcription executor."""
+    global _transcription_executor
+    if _transcription_executor is not None:
+        _transcription_executor.shutdown(wait=True)
+        _transcription_executor = None
+        logger.info("Transcription thread pool shut down")
 
 
 class TranscriberService:
@@ -114,6 +141,26 @@ class TranscriberService:
             "language": info.language,
             "language_probability": info.language_probability,
         }
+
+    async def transcribe_async(self, audio_path: str, language: str = "ru") -> dict:
+        """Async wrapper for transcribe - runs in thread pool to avoid blocking event loop.
+
+        This is critical for long audio files where transcription can take minutes.
+        Running in executor allows RabbitMQ heartbeats and HTTP health checks to continue.
+        """
+        loop = asyncio.get_running_loop()
+        executor = get_transcription_executor()
+
+        logger.info(f"Starting async transcription of {audio_path}")
+
+        result = await loop.run_in_executor(
+            executor,
+            self.transcribe,
+            audio_path,
+            language,
+        )
+
+        return result
 
     def _get_sentence_start_time(self, first_word_start: float, second_word_start: float | None) -> float:
         """Calculate sentence start time based on gap between first two words.
