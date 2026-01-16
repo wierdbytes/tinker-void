@@ -134,6 +134,8 @@ export default function SecretMeetingDetailPage() {
   const meetingId = params.meetingId as string
 
   const [meeting, setMeeting] = useState<Meeting | null>(null)
+  const [utterances, setUtterances] = useState<Utterance[]>([])
+  const [availableSources, setAvailableSources] = useState<AvailableSource[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isDownloadingAudio, setIsDownloadingAudio] = useState(false)
@@ -153,10 +155,9 @@ export default function SecretMeetingDetailPage() {
       .catch(() => setIsDeepgramAvailable(false))
   }, [])
 
-  const fetchMeeting = async (source?: TranscriptionSource) => {
+  const fetchMeeting = async () => {
     try {
-      const sourceParam = source ? `&source=${source}` : ''
-      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}${sourceParam}`)
+      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}`)
       if (!res.ok) {
         if (res.status === 401) {
           setError('Нет доступа к этой встрече')
@@ -167,11 +168,27 @@ export default function SecretMeetingDetailPage() {
         }
         return
       }
-      setMeeting(await res.json())
+      const data = await res.json()
+      setMeeting(data)
+      setUtterances(data.utterances || [])
+      setAvailableSources(data.availableSources || [])
     } catch (err) {
       setError('Ошибка соединения')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Fetch only utterances for a specific source (doesn't reload player)
+  const fetchUtterances = async (source: TranscriptionSource) => {
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}&source=${source}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setUtterances(data.utterances || [])
+      setAvailableSources(data.availableSources || [])
+    } catch (err) {
+      console.error('Failed to fetch utterances:', err)
     }
   }
 
@@ -191,9 +208,8 @@ export default function SecretMeetingDetailPage() {
         throw new Error(data.error || 'Ошибка транскрипции')
       }
 
-      // Refresh meeting data with Deepgram source
-      await fetchMeeting('DEEPGRAM')
-      setTranscriptionSource('DEEPGRAM')
+      // Refresh utterances with Deepgram source (doesn't reload player)
+      await fetchUtterances('DEEPGRAM')
     } catch (err) {
       console.error('Deepgram transcription error:', err)
       alert(err instanceof Error ? err.message : 'Ошибка транскрипции Deepgram')
@@ -209,23 +225,25 @@ export default function SecretMeetingDetailPage() {
     setTranscriptionSource(source)
 
     // Only fetch if there's existing transcription for this source
-    const sourceData = meeting?.availableSources?.find((s) => s.source === source)
+    const sourceData = availableSources.find((s) => s.source === source)
     if (sourceData && sourceData.count > 0) {
-      await fetchMeeting(source)
+      await fetchUtterances(source)
     }
   }
 
   // Check if current source has transcription data
   const currentSourceHasData = () => {
     if (transcriptionSource === 'WHISPER') {
-      return meeting?.utterances && meeting.utterances.length > 0
+      // For Whisper, check if we have utterances loaded
+      const whisperCount = availableSources.find((s) => s.source === 'WHISPER')?.count || 0
+      return whisperCount > 0 && utterances.length > 0
     }
-    const deepgramSource = meeting?.availableSources?.find((s) => s.source === 'DEEPGRAM')
-    return deepgramSource && deepgramSource.count > 0
+    const deepgramSource = availableSources.find((s) => s.source === 'DEEPGRAM')
+    return deepgramSource && deepgramSource.count > 0 && utterances.length > 0
   }
 
   const getSourceCount = (source: TranscriptionSource) => {
-    return meeting?.availableSources?.find((s) => s.source === source)?.count || 0
+    return availableSources.find((s) => s.source === source)?.count || 0
   }
 
   const formatTime = (seconds: number) => {
@@ -266,9 +284,9 @@ export default function SecretMeetingDetailPage() {
   })
 
   const downloadTranscriptMarkdown = () => {
-    if (!meeting || meeting.utterances.length === 0) return
+    if (!meeting || utterances.length === 0) return
 
-    const grouped = groupUtterances(meeting.utterances)
+    const grouped = groupUtterances(utterances)
 
     let markdown = `# ${meeting.room.name}\n\n`
     markdown += `**Дата:** ${formatDate(meeting.startedAt)}\n\n`
@@ -450,10 +468,10 @@ export default function SecretMeetingDetailPage() {
                 <Users className="w-4 h-4 flex-shrink-0" />
                 <span>{meeting.participants.length} участников</span>
               </div>
-              {meeting.utterances.length > 0 && (
+              {utterances.length > 0 && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary">
                   <FileText className="w-4 h-4 flex-shrink-0" />
-                  <span>{meeting.utterances.length} фраз</span>
+                  <span>{utterances.length} фраз</span>
                 </div>
               )}
             </div>
@@ -478,7 +496,7 @@ export default function SecretMeetingDetailPage() {
               <MeetingPlayer
                 player={player}
                 participantStyles={participantStyles}
-                utterances={meeting.utterances}
+                utterances={utterances}
                 onDownload={downloadMergedAudio}
                 isDownloading={isDownloadingAudio}
               />
@@ -592,7 +610,7 @@ export default function SecretMeetingDetailPage() {
               ) : currentSourceHasData() ? (
                 <ScrollArea className="flex-1">
                   <div className="p-6 space-y-4">
-                    {groupUtterances(meeting.utterances).map((utterance) => {
+                    {groupUtterances(utterances).map((utterance) => {
                       const style = participantStyles[utterance.participant.id]
                       return (
                         <div
