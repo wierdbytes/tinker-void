@@ -157,7 +157,8 @@ export default function SecretMeetingDetailPage() {
 
   const fetchMeeting = async () => {
     try {
-      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}`)
+      // Fetch with WHISPER source by default
+      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}&source=WHISPER`)
       if (!res.ok) {
         if (res.status === 401) {
           setError('Нет доступа к этой встрече')
