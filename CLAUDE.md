@@ -17,6 +17,7 @@ TinkerVoid — a web application for team voice meetings with features:
 - **Voice:** LiveKit (self-hosted, v1.9.8)
 - **Recording:** LiveKit Egress → MinIO (S3)
 - **Transcription:** faster-whisper large-v3-turbo (Python, runs on CPU) — [details](docs/TRANSCRIBER.md)
+- **Alternative Transcription:** Deepgram API (optional, on-demand)
 - **Task Queue:** RabbitMQ 4.x (async transcription)
 - **Summarization:** Claude API (Anthropic)
 - **File Storage:** MinIO (S3-compatible)
@@ -79,6 +80,7 @@ tinkervoid/
 │   │   └── lib/
 │   │       ├── livekit.ts        # LiveKit client and startTrackRecording()
 │   │       ├── rabbitmq.ts       # RabbitMQ publisher for transcription tasks
+│   │       ├── deepgram.ts       # Deepgram API client (alternative transcription)
 │   │       ├── claude.ts         # Claude API client
 │   │       └── prisma.ts         # Prisma client
 │   ├── prisma/schema.prisma      # DB schema
@@ -186,6 +188,11 @@ RABBITMQ_URL=amqp://tinkervoid:tinkervoid_secret@localhost:5672/
 
 # Claude API (REQUIRED for summarization)
 ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Deepgram API (optional - for alternative transcription)
+DEEPGRAM_API_KEY=
+DEEPGRAM_MODEL=nova-3
+DEEPGRAM_LANGUAGE=multi  # 'multi' for multilingual, or 'ru', 'en', etc.
 ```
 
 ## Important Implementation Details
@@ -243,6 +250,8 @@ Queue structure:
 | `/api/meetings/[id]/audio?secretId=` | GET | Download merged audio (requires secretId) |
 | `/api/transcribe` | POST | Queue transcription tasks |
 | `/api/transcribe/callback` | POST | Callback from transcriber with results |
+| `/api/transcribe/deepgram` | POST | On-demand Deepgram transcription |
+| `/api/transcribe/deepgram/status` | GET | Check Deepgram availability |
 | `/api/summarize` | POST | Summarization via Claude |
 
 ## Database Schema
@@ -250,8 +259,8 @@ Queue structure:
 - **Room** — meeting rooms
 - **Meeting** — meetings (status: IN_PROGRESS → PROCESSING → COMPLETED/FAILED)
 - **Participant** — meeting participants (identity, name, joinedAt, leftAt)
-- **Recording** — audio recordings (fileUrl, duration, transcribed)
-- **Utterance** — transcript phrases (text, startTime, endTime)
+- **Recording** — audio recordings (fileUrl, duration, transcribed, deepgramTranscribed)
+- **Utterance** — transcript phrases (text, startTime, endTime, source: WHISPER|DEEPGRAM)
 
 ## Ports
 
@@ -314,6 +323,43 @@ curl http://localhost:8001/health
 # Check task queue
 docker exec tinkervoid-rabbitmq rabbitmqctl list_queues name messages
 ```
+
+## Deepgram API (Alternative Transcription)
+
+Optional cloud-based transcription service as an alternative to self-hosted Whisper.
+
+### Configuration
+1. Get API key at https://console.deepgram.com
+2. Add to `.env.local` or `.env.prod`:
+```env
+DEEPGRAM_API_KEY=your_api_key
+DEEPGRAM_MODEL=nova-3
+DEEPGRAM_LANGUAGE=multi  # or 'ru', 'en', 'es', etc.
+```
+
+### Features
+- On-demand transcription (triggered by user)
+- **Multilingual Code Switching** (`DEEPGRAM_LANGUAGE=multi`) — auto-detects and transcribes mixed-language audio
+- Models: nova-3 (latest), nova-2 (36 languages)
+- Results stored separately with `source: DEEPGRAM`
+
+### How It Works
+1. Whisper transcription runs automatically after meeting ends
+2. User can request Deepgram transcription via UI switcher
+3. Both transcriptions are stored and can be switched between
+4. Deepgram reads audio from MinIO (same as Whisper)
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/transcribe/deepgram/status` | GET | `{"available": true, "model": "nova-3"}` |
+| `/api/transcribe/deepgram` | POST | Transcribe meeting (body: `{meetingId, secretId}`) |
+
+### Cost Considerations
+- Deepgram is a paid cloud service (billed per audio minute)
+- Whisper remains free (self-hosted)
+- Deepgram only runs when explicitly requested by user
 
 ## Admin Panel (/void)
 

@@ -53,34 +53,37 @@ model Participant {
 }
 
 model Utterance {
-  id            String      @id @default(cuid())
+  id            String              @id @default(cuid())
   meetingId     String
-  meeting       Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting       Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   participantId String
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  text          String      @db.Text
-  startTime     Float       // Seconds from meeting start
-  endTime       Float       // Seconds from meeting start
-  createdAt     DateTime    @default(now())
+  participant   Participant         @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  text          String              @db.Text
+  startTime     Float               // Seconds from meeting start
+  endTime       Float               // Seconds from meeting start
+  source        TranscriptionSource @default(WHISPER)
+  createdAt     DateTime            @default(now())
 
   @@index([meetingId])
+  @@index([meetingId, source])
   @@index([participantId])
   @@index([startTime])
   @@map("utterances")
 }
 
 model Recording {
-  id            String      @id @default(cuid())
-  meetingId     String
-  meeting       Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  participantId String
-  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  fileUrl       String      // S3/MinIO URL
-  fileName      String      // Original file name
-  duration      Float       // Duration in seconds
-  startedAt     DateTime?   // When the recording actually started (from LiveKit Egress)
-  transcribed   Boolean     @default(false)
-  createdAt     DateTime    @default(now())
+  id                  String      @id @default(cuid())
+  meetingId           String
+  meeting             Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participantId       String
+  participant         Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  fileUrl             String      // S3/MinIO URL
+  fileName            String      // Original file name
+  duration            Float       // Duration in seconds
+  startedAt           DateTime?   // When the recording actually started (from LiveKit Egress)
+  transcribed         Boolean     @default(false)
+  deepgramTranscribed Boolean     @default(false)
+  createdAt           DateTime    @default(now())
 
   @@index([meetingId])
   @@index([participantId])
@@ -93,6 +96,11 @@ enum MeetingStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum TranscriptionSource {
+  WHISPER
+  DEEPGRAM
 }
 
 model Egress {

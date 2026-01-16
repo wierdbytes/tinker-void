@@ -189,6 +189,25 @@ init_config() {
 
     log_success "Configuration updated in $ENV_FILE"
 
+    # Deepgram API configuration (optional)
+    echo ""
+    log_info "Deepgram API configuration (optional - for alternative transcription)"
+    read -p "Enter Deepgram API key (press Enter to skip): " DEEPGRAM_API_KEY_INPUT
+    if [ -n "$DEEPGRAM_API_KEY_INPUT" ]; then
+        $SED_INPLACE "s|^DEEPGRAM_API_KEY=.*|DEEPGRAM_API_KEY=$DEEPGRAM_API_KEY_INPUT|" "$ENV_FILE"
+
+        echo "Available models:"
+        echo "  nova-3 (latest, best accuracy)"
+        echo "  nova-2 (36 languages)"
+        read -p "Deepgram model [nova-3]: " DEEPGRAM_MODEL_INPUT
+        DEEPGRAM_MODEL_INPUT=${DEEPGRAM_MODEL_INPUT:-nova-3}
+        $SED_INPLACE "s|^DEEPGRAM_MODEL=.*|DEEPGRAM_MODEL=$DEEPGRAM_MODEL_INPUT|" "$ENV_FILE"
+
+        log_success "Deepgram configured with model: $DEEPGRAM_MODEL_INPUT"
+    else
+        log_info "Deepgram skipped (can be configured later in $ENV_FILE)"
+    fi
+
     # Generate LiveKit configs
     generate_livekit_configs
 

@@ -6,7 +6,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText, Mic, Download } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText, Mic, Download, Settings2, Check, Sparkles } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { useAudioPlayer } from '@/hooks/useAudioPlayer'
 import { MeetingPlayer } from '@/components/player/MeetingPlayer'
@@ -17,12 +18,15 @@ interface Participant {
   identity: string
 }
 
+type TranscriptionSource = 'WHISPER' | 'DEEPGRAM'
+
 interface Utterance {
   id: string
   text: string
   startTime: number
   endTime: number
   participant: Participant
+  source?: TranscriptionSource
 }
 
 interface GroupedUtterance {
@@ -84,6 +88,11 @@ function groupUtterances(utterances: Utterance[]): GroupedUtterance[] {
   return result
 }
 
+interface AvailableSource {
+  source: TranscriptionSource
+  count: number
+}
+
 interface Meeting {
   id: string
   startedAt: string
@@ -96,6 +105,7 @@ interface Meeting {
   participants: Participant[]
   utterances: Utterance[]
   recordings: Recording[]
+  availableSources?: AvailableSource[]
 }
 
 const participantGradients = [
@@ -127,14 +137,26 @@ export default function SecretMeetingDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isDownloadingAudio, setIsDownloadingAudio] = useState(false)
+  const [transcriptionSource, setTranscriptionSource] = useState<TranscriptionSource>('WHISPER')
+  const [isDeepgramAvailable, setIsDeepgramAvailable] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [isSourcePopoverOpen, setIsSourcePopoverOpen] = useState(false)
 
   useEffect(() => {
     fetchMeeting()
   }, [meetingId, secretId])
 
-  const fetchMeeting = async () => {
+  useEffect(() => {
+    fetch('/api/transcribe/deepgram/status')
+      .then((res) => res.json())
+      .then((data) => setIsDeepgramAvailable(data.available))
+      .catch(() => setIsDeepgramAvailable(false))
+  }, [])
+
+  const fetchMeeting = async (source?: TranscriptionSource) => {
     try {
-      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}`)
+      const sourceParam = source ? `&source=${source}` : ''
+      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}${sourceParam}`)
       if (!res.ok) {
         if (res.status === 401) {
           setError('Нет доступа к этой встрече')
@@ -151,6 +173,59 @@ export default function SecretMeetingDetailPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const requestDeepgramTranscription = async () => {
+    if (!meeting) return
+
+    setIsTranscribing(true)
+    try {
+      const res = await fetch('/api/transcribe/deepgram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meetingId, secretId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Ошибка транскрипции')
+      }
+
+      // Refresh meeting data with Deepgram source
+      await fetchMeeting('DEEPGRAM')
+      setTranscriptionSource('DEEPGRAM')
+    } catch (err) {
+      console.error('Deepgram transcription error:', err)
+      alert(err instanceof Error ? err.message : 'Ошибка транскрипции Deepgram')
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
+  const switchSource = async (source: TranscriptionSource) => {
+    if (source === transcriptionSource) return
+
+    setIsSourcePopoverOpen(false)
+    setTranscriptionSource(source)
+
+    // Only fetch if there's existing transcription for this source
+    const sourceData = meeting?.availableSources?.find((s) => s.source === source)
+    if (sourceData && sourceData.count > 0) {
+      await fetchMeeting(source)
+    }
+  }
+
+  // Check if current source has transcription data
+  const currentSourceHasData = () => {
+    if (transcriptionSource === 'WHISPER') {
+      return meeting?.utterances && meeting.utterances.length > 0
+    }
+    const deepgramSource = meeting?.availableSources?.find((s) => s.source === 'DEEPGRAM')
+    return deepgramSource && deepgramSource.count > 0
+  }
+
+  const getSourceCount = (source: TranscriptionSource) => {
+    return meeting?.availableSources?.find((s) => s.source === source)?.count || 0
   }
 
   const formatTime = (seconds: number) => {
@@ -414,8 +489,74 @@ export default function SecretMeetingDetailPage() {
           <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-2 overflow-hidden flex-1 flex flex-col min-h-0">
             <CardContent className="p-0 flex flex-col flex-1 min-h-0">
               <div className="px-6 py-4 border-b border-border/50 bg-card flex items-center justify-between flex-shrink-0">
-                <h2 className="font-semibold text-foreground">Транскрипт</h2>
-                {meeting.utterances.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <h2 className="font-semibold text-foreground">Транскрипт</h2>
+                  {isDeepgramAvailable && (
+                    <Popover open={isSourcePopoverOpen} onOpenChange={setIsSourcePopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center transition-all',
+                            'hover:bg-surface-secondary text-muted-foreground hover:text-foreground',
+                            isSourcePopoverOpen && 'bg-surface-secondary text-foreground'
+                          )}
+                        >
+                          <Settings2 className="w-4 h-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-56 p-2">
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                            Источник транскрипции
+                          </p>
+                          <button
+                            onClick={() => switchSource('WHISPER')}
+                            className={cn(
+                              'w-full flex items-center justify-between px-2 py-2 rounded-md text-sm transition-colors',
+                              transcriptionSource === 'WHISPER'
+                                ? 'bg-primary/10 text-primary'
+                                : 'hover:bg-surface-secondary text-foreground'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">Whisper</span>
+                              {getSourceCount('WHISPER') > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({getSourceCount('WHISPER')})
+                                </span>
+                              )}
+                            </div>
+                            {transcriptionSource === 'WHISPER' && (
+                              <Check className="w-4 h-4 text-primary" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => switchSource('DEEPGRAM')}
+                            className={cn(
+                              'w-full flex items-center justify-between px-2 py-2 rounded-md text-sm transition-colors',
+                              transcriptionSource === 'DEEPGRAM'
+                                ? 'bg-primary/10 text-primary'
+                                : 'hover:bg-surface-secondary text-foreground'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">Deepgram</span>
+                              {getSourceCount('DEEPGRAM') > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({getSourceCount('DEEPGRAM')})
+                                </span>
+                              )}
+                            </div>
+                            {transcriptionSource === 'DEEPGRAM' && (
+                              <Check className="w-4 h-4 text-primary" />
+                            )}
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+                {currentSourceHasData() && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -428,7 +569,27 @@ export default function SecretMeetingDetailPage() {
                 )}
               </div>
 
-              {meeting.utterances.length > 0 ? (
+              {/* Deepgram selected but no transcription yet */}
+              {transcriptionSource === 'DEEPGRAM' && getSourceCount('DEEPGRAM') === 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <Button
+                    onClick={requestDeepgramTranscription}
+                    disabled={isTranscribing}
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Транскрибируем...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Транскрибировать с Deepgram
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : currentSourceHasData() ? (
                 <ScrollArea className="flex-1">
                   <div className="p-6 space-y-4">
                     {groupUtterances(meeting.utterances).map((utterance) => {
