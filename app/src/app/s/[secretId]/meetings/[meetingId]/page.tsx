@@ -305,14 +305,14 @@ export default function SecretMeetingDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="h-screen bg-background relative flex flex-col overflow-hidden">
       {/* Background decoration */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-20 px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md">
+      <header className="flex-shrink-0 z-20 px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Button
             variant="ghost"
@@ -338,10 +338,10 @@ export default function SecretMeetingDetailPage() {
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 px-6 py-8">
-        <div className="max-w-5xl mx-auto">
+      <main className="relative z-10 flex-1 flex flex-col min-h-0 px-6 py-8">
+        <div className="max-w-5xl mx-auto w-full flex flex-col flex-1 min-h-0">
           {/* Meeting header */}
-          <section className="mb-8 fade-in-up">
+          <section className="mb-6 fade-in-up flex-shrink-0">
             <div className="flex items-start gap-4 mb-6">
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Waves className="w-6 h-6 text-primary" />
@@ -389,7 +389,7 @@ export default function SecretMeetingDetailPage() {
 
           {/* Audio Player */}
           {meeting.recordings && meeting.recordings.length > 0 && (
-            <section className="mb-8 fade-in-up fade-in-delay-1">
+            <section className="mb-6 fade-in-up fade-in-delay-1 flex-shrink-0">
               <MeetingPlayer
                 player={player}
                 participantStyles={participantStyles}
@@ -401,9 +401,9 @@ export default function SecretMeetingDetailPage() {
           )}
 
           {/* Transcript */}
-          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-2 overflow-hidden">
-            <CardContent className="p-0">
-              <div className="px-6 py-4 border-b border-border/50 bg-card flex items-center justify-between">
+          <Card className="border-border/50 shadow-soft fade-in-up fade-in-delay-2 overflow-hidden flex-1 flex flex-col min-h-0">
+            <CardContent className="p-0 flex flex-col flex-1 min-h-0">
+              <div className="px-6 py-4 border-b border-border/50 bg-card flex items-center justify-between flex-shrink-0">
                 <h2 className="font-semibold text-foreground">Транскрипт</h2>
                 {meeting.utterances.length > 0 && (
                   <Button
@@ -419,7 +419,7 @@ export default function SecretMeetingDetailPage() {
               </div>
 
               {meeting.utterances.length > 0 ? (
-                <ScrollArea className="h-[600px]">
+                <ScrollArea className="flex-1">
                   <div className="p-6 space-y-4">
                     {groupUtterances(meeting.utterances).map((utterance) => {
                       const style = participantStyles[utterance.participant.id]
@@ -452,14 +452,14 @@ export default function SecretMeetingDetailPage() {
                   </div>
                 </ScrollArea>
               ) : meeting.status === 'PROCESSING' ? (
-                <div className="flex items-center justify-center py-20">
+                <div className="flex-1 flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">Транскрипт формируется...</p>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-center py-20">
+                <div className="flex-1 flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-surface-secondary flex items-center justify-center">
                       <FileText className="w-6 h-6 text-muted-foreground" />
