@@ -66,8 +66,9 @@ tinkervoid/
 │   ├── src/
 │   │   ├── app/                  # Pages and API routes
 │   │   │   ├── page.tsx          # Home (lobby)
-│   │   │   ├── room/[roomId]/    # Room page
-│   │   │   ├── meetings/         # Meeting history
+│   │   │   ├── s/[secretId]/     # Room page (by secret link)
+│   │   │   │   ├── history/      # Meeting history
+│   │   │   │   └── meetings/[id] # Meeting details
 │   │   │   └── api/
 │   │   │       ├── livekit/
 │   │   │       │   ├── token/    # Token generation
@@ -238,8 +239,8 @@ Queue structure:
 | `/api/rooms` | POST | Create room |
 | `/api/livekit/token` | POST | Generate LiveKit token |
 | `/api/livekit/webhook` | POST | Handle LiveKit events |
-| `/api/meetings` | GET | List meetings |
-| `/api/meetings/[id]` | GET | Meeting details |
+| `/api/meetings/[id]?secretId=` | GET | Meeting details (requires secretId) |
+| `/api/meetings/[id]/audio?secretId=` | GET | Download merged audio (requires secretId) |
 | `/api/transcribe` | POST | Queue transcription tasks |
 | `/api/transcribe/callback` | POST | Callback from transcriber with results |
 | `/api/summarize` | POST | Summarization via Claude |
