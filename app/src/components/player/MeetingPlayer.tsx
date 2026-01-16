@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { AudioPlayerReturn } from '@/hooks/useAudioPlayer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -46,7 +47,7 @@ export function MeetingPlayer({
     tracks,
     play,
     pause,
-    seek,
+    seekAndPlay,
     toggleMute,
     setVolume,
   } = player
@@ -57,11 +58,20 @@ export function MeetingPlayer({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Group utterances by participant for multi-track display
+  const participantTracks = useMemo(() => {
+    const participantIds = [...new Set(utterances.map(u => u.participant.id))]
+    return participantIds.map(id => ({
+      participantId: id,
+      utterances: utterances.filter(u => u.participant.id === id),
+    }))
+  }, [utterances])
+
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const percentage = x / rect.width
-    seek(percentage * totalDuration)
+    seekAndPlay(percentage * totalDuration)
   }
 
   if (tracks.length === 0 && !isLoading) {
@@ -70,70 +80,108 @@ export function MeetingPlayer({
 
   const loadedTracks = tracks.filter(t => t.loaded).length
   const totalTracks = tracks.length
+  const trackCount = participantTracks.length || 1
+  const playheadPosition = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
 
   return (
     <Card className="border-border/50 shadow-soft overflow-hidden">
       <CardContent className="p-4 space-y-4">
         {/* Main Controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-start gap-4">
           {/* Play/Pause Button */}
           <Button
             variant="secondary"
             size="icon"
             onClick={isPlaying ? pause : play}
             disabled={isLoading || loadedTracks === 0}
-            className="w-12 h-12 rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex-shrink-0"
+            className="w-20 h-20 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary flex-shrink-0"
           >
             {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-7 h-7 animate-spin" />
             ) : isPlaying ? (
-              <Pause className="w-5 h-5" />
+              <Pause className="w-7 h-7" />
             ) : (
-              <Play className="w-5 h-5 ml-0.5" />
+              <Play className="w-7 h-7 ml-0.5" />
             )}
           </Button>
 
-          {/* Progress Bar */}
+          {/* Progress Bar - Multi-track timeline */}
           <div className="flex-1 space-y-1">
             <div
-              className="relative h-2 bg-surface-secondary rounded-full cursor-pointer overflow-hidden"
+              className="relative h-20 bg-surface-secondary rounded-lg cursor-pointer overflow-hidden"
               onClick={handleProgressClick}
             >
-              {/* Utterance segments - colored by speaker */}
-              {utterances.map(utterance => {
-                if (totalDuration === 0) return null
-                const startPercent = (utterance.startTime / totalDuration) * 100
-                const widthPercent = ((utterance.endTime - utterance.startTime) / totalDuration) * 100
+              {/* Track lanes */}
+              {participantTracks.map((track, trackIndex) => {
+                const trackHeight = 100 / trackCount
+                const topPosition = trackIndex * trackHeight
+
                 return (
                   <div
-                    key={utterance.id}
-                    className={cn(
-                      'absolute h-full rounded-sm',
-                      participantStyles[utterance.participant.id]?.badge || 'bg-primary'
-                    )}
+                    key={track.participantId}
+                    className="absolute left-0 right-0"
                     style={{
-                      left: `${startPercent}%`,
-                      width: `${Math.max(widthPercent, 0.5)}%`,
+                      top: `${topPosition}%`,
+                      height: `${trackHeight}%`,
                     }}
-                  />
+                  >
+                    {/* Track separator line */}
+                    {trackIndex > 0 && (
+                      <div className="absolute top-0 left-0 right-0 h-px bg-border/30" />
+                    )}
+
+                    {/* Utterance segments for this participant */}
+                    {track.utterances.map(utterance => {
+                      if (totalDuration === 0) return null
+                      const startPercent = (utterance.startTime / totalDuration) * 100
+                      const widthPercent = ((utterance.endTime - utterance.startTime) / totalDuration) * 100
+                      return (
+                        <div
+                          key={utterance.id}
+                          className={cn(
+                            'absolute rounded-sm',
+                            participantStyles[utterance.participant.id]?.badge || 'bg-primary'
+                          )}
+                          style={{
+                            left: `${startPercent}%`,
+                            width: `${Math.max(widthPercent, 0.3)}%`,
+                            top: '10%',
+                            height: '80%',
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
                 )
               })}
 
-              {/* Progress overlay - darkens played portion */}
+              {/* Played overlay - darkens the portion after playhead */}
               <div
-                className="absolute h-full bg-background/50 rounded-full pointer-events-none"
+                className="absolute top-0 bottom-0 bg-background/40 pointer-events-none"
                 style={{
-                  left: totalDuration > 0 ? `${(currentTime / totalDuration) * 100}%` : '0%',
+                  left: `${playheadPosition}%`,
                   right: 0,
                 }}
               />
 
-              {/* Seek handle */}
+              {/* Playhead - vertical line with handle on top */}
               {totalDuration > 0 && (
                 <div
-                  className="absolute w-3 h-3 bg-primary rounded-full -translate-x-1/2 top-1/2 -translate-y-1/2 shadow-md"
-                  style={{ left: `${(currentTime / totalDuration) * 100}%` }}
-                />
+                  className="absolute -top-2 bottom-0 pointer-events-none"
+                  style={{ left: `${playheadPosition}%` }}
+                >
+                  {/* Top handle (triangle/arrow) */}
+                  <div
+                    className="absolute top-0 -translate-x-1/2 w-0 h-0"
+                    style={{
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderTop: '8px solid hsl(var(--primary))',
+                    }}
+                  />
+                  {/* Vertical line */}
+                  <div className="absolute top-2 bottom-0 w-0.5 bg-primary -translate-x-1/2" />
+                </div>
               )}
             </div>
 
