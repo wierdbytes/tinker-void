@@ -267,19 +267,16 @@ export default function SecretRoomPage() {
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 px-6 py-12 flex items-center justify-center min-h-[calc(100vh-80px)]">
+      <main className="relative z-10 px-6 pt-8 pb-12 flex justify-center">
         <div className="w-full max-w-md">
           {/* Room info */}
-          <div className="text-center mb-8 fade-in-up">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 mb-4">
-              <Waves className="w-8 h-8 text-primary" />
+          <div className="flex items-center gap-4 mb-8 fade-in-up">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 shrink-0">
+              <Waves className="w-6 h-6 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground mb-2">
+            <h1 className="text-2xl font-bold text-foreground">
               {room?.name || 'Присоединиться к встрече'}
             </h1>
-            <p className="text-muted-foreground text-sm">
-              Введите имя, чтобы присоединиться
-            </p>
           </div>
 
           {/* Join card */}
