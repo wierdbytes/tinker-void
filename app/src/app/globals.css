@@ -356,3 +356,22 @@ input:-webkit-autofill:active {
     opacity: 0;
   }
 }
+
+/* Participant tile sizing with container queries */
+/* Uses aspect-ratio 16:9 and fits within container while maintaining ratio */
+.participant-tile {
+  aspect-ratio: 16 / 9;
+  /* Default: width-based sizing (container is wider than 16:9) */
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+}
+
+/* When container is taller than 16:9, use height-based sizing */
+@container (aspect-ratio < 16/9) {
+  .participant-tile {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+  }
+}

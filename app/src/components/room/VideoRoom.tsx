@@ -14,9 +14,12 @@ import { Track, RoomOptions } from 'livekit-client'
 import '@livekit/components-styles'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { AudioSettings } from '@/components/audio'
+import { DeviceSelect } from '@/components/audio/DeviceSelect'
+import { AudioLevelMeter } from '@/components/audio/AudioLevelMeter'
+import { useAudioDevices } from '@/components/audio/useAudioDevices'
+import { useVideoDevices } from '@/components/video/useVideoDevices'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { Mic, MicOff, PhoneOff, Users, Copy, Check, Settings, Waves, Monitor, MonitorOff, History } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, Copy, Check, Waves, Monitor, MonitorOff, History, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface VideoRoomProps {
@@ -29,6 +32,9 @@ interface VideoRoomProps {
   secretId?: string
   audioInputDeviceId?: string
   audioOutputDeviceId?: string
+  videoInputDeviceId?: string
+  micEnabled?: boolean
+  cameraEnabled?: boolean
 }
 
 export function VideoRoom({
@@ -41,10 +47,16 @@ export function VideoRoom({
   secretId,
   audioInputDeviceId,
   audioOutputDeviceId,
+  videoInputDeviceId,
+  micEnabled = true,
+  cameraEnabled = false,
 }: VideoRoomProps) {
   const roomOptions: RoomOptions = {
     audioCaptureDefaults: {
       deviceId: audioInputDeviceId || undefined,
+    },
+    videoCaptureDefaults: {
+      deviceId: videoInputDeviceId || undefined,
     },
     audioOutput: {
       deviceId: audioOutputDeviceId || undefined,
@@ -56,13 +68,21 @@ export function VideoRoom({
       token={token}
       serverUrl={serverUrl}
       connect={true}
-      audio={true}
-      video={false}
+      audio={micEnabled}
+      video={cameraEnabled}
       onDisconnected={onLeave}
       options={roomOptions}
       className="h-full"
     >
-      <RoomContent roomId={roomId} roomName={roomName} participantName={participantName} onLeave={onLeave} secretId={secretId} />
+      <RoomContent
+        roomId={roomId}
+        roomName={roomName}
+        participantName={participantName}
+        onLeave={onLeave}
+        secretId={secretId}
+        initialMicEnabled={micEnabled}
+        initialCameraEnabled={cameraEnabled}
+      />
       <RoomAudioRenderer />
     </LiveKitRoom>
   )
@@ -74,14 +94,49 @@ interface RoomContentProps {
   participantName: string
   onLeave: () => void
   secretId?: string
+  initialMicEnabled?: boolean
+  initialCameraEnabled?: boolean
 }
 
-function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: RoomContentProps) {
+function RoomContent({
+  roomId,
+  roomName,
+  participantName,
+  onLeave,
+  secretId,
+  initialMicEnabled = true,
+  initialCameraEnabled = false,
+}: RoomContentProps) {
   const room = useRoomContext()
-  const { localParticipant, isScreenShareEnabled } = useLocalParticipant()
+  const { localParticipant, isScreenShareEnabled, isCameraEnabled } = useLocalParticipant()
   const participants = useParticipants()
-  const [isMuted, setIsMuted] = useState(false)
+  const [isMuted, setIsMuted] = useState(!initialMicEnabled)
+  const [isCameraOff, setIsCameraOff] = useState(!initialCameraEnabled)
   const [copied, setCopied] = useState(false)
+
+  // Audio devices hook
+  const {
+    audioInputDevices,
+    audioOutputDevices,
+    selectedInputId: selectedAudioInputId,
+    selectedOutputId: selectedAudioOutputId,
+    previewStream: audioPreviewStream,
+    supportsAudioOutput,
+    setInputDevice: setAudioInputDevice,
+    setOutputDevice: setAudioOutputDevice,
+  } = useAudioDevices(room)
+
+  // Video devices hook
+  const {
+    videoInputDevices,
+    selectedVideoId,
+    setVideoDevice,
+    requestPermission: requestVideoPermission,
+  } = useVideoDevices(room)
+
+  // Filter out devices with empty deviceId (happens before permission is granted)
+  const validAudioInputDevices = audioInputDevices.filter(d => d.deviceId && d.deviceId !== '')
+  const validVideoInputDevices = videoInputDevices.filter(d => d.deviceId && d.deviceId !== '')
 
   const screenShareTracks = useTracks(
     [Track.Source.ScreenShare, Track.Source.ScreenShareAudio],
@@ -98,6 +153,13 @@ function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: R
       setIsMuted(!isMuted)
     }
   }, [localParticipant, isMuted])
+
+  const toggleCamera = useCallback(async () => {
+    if (localParticipant) {
+      await localParticipant.setCameraEnabled(isCameraOff)
+      setIsCameraOff(!isCameraOff)
+    }
+  }, [localParticipant, isCameraOff])
 
   const copyRoomLink = useCallback(() => {
     const url = secretId
@@ -233,18 +295,21 @@ function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: R
             </div>
           </div>
         ) : (
-          /* Normal Grid Layout */
-          <div className="p-6 overflow-auto h-full">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-w-7xl mx-auto">
+          /* Normal Grid Layout - fills available space */
+          <div className="h-full p-4 flex items-center justify-center overflow-hidden">
+            <div
+              className="grid gap-3 w-full h-full"
+              style={getGridStyle(participants.length)}
+            >
               {participants.map((participant) => (
                 <ParticipantTile
                   key={participant.identity}
                   participant={participant}
                   isLocal={participant.identity === localParticipant?.identity}
+                  totalParticipants={participants.length}
                 />
               ))}
             </div>
-
           </div>
         )}
       </div>
@@ -252,25 +317,137 @@ function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: R
       {/* Controls */}
       <div className="px-6 py-5 border-t border-border/50 bg-card/80 backdrop-blur-md">
         <div className="flex items-center justify-center gap-4">
-          {/* Mute Button */}
-          <Button
-            variant={isMuted ? 'destructive' : 'ghost'}
-            size="icon"
-            onClick={toggleMute}
-            className={cn(
-              'w-14 h-14 rounded-full transition-all duration-200 hover:scale-105 active:scale-95',
-              isMuted
-                ? 'bg-destructive hover:bg-destructive/90'
-                : 'bg-zinc-700 hover:bg-zinc-600'
+          {/* Mute Button with Settings */}
+          <div className="relative">
+            <Button
+              variant={isMuted ? 'destructive' : 'ghost'}
+              size="icon"
+              onClick={toggleMute}
+              className={cn(
+                'w-14 h-14 rounded-full transition-all duration-200 hover:scale-105 active:scale-95',
+                isMuted
+                  ? 'bg-destructive hover:bg-destructive/90'
+                  : 'bg-zinc-700 hover:bg-zinc-600'
+              )}
+              title={isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+            >
+              {isMuted ? (
+                <MicOff className="w-6 h-6 text-white" />
+              ) : (
+                <Mic className="w-6 h-6 text-white" />
+              )}
+            </Button>
+
+            {/* Audio Settings Dropdown */}
+            {validAudioInputDevices.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card border border-border/50 flex items-center justify-center hover:bg-muted transition-colors shadow-sm"
+                    aria-label="Настройки аудио"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-72 bg-card border-border/50 shadow-soft-lg p-4"
+                  align="center"
+                  side="top"
+                  sideOffset={8}
+                >
+                  <div className="space-y-4">
+                    <DeviceSelect
+                      label="Микрофон"
+                      devices={audioInputDevices}
+                      selectedDeviceId={selectedAudioInputId}
+                      onDeviceChange={setAudioInputDevice}
+                      kind="audioinput"
+                    />
+
+                    {audioPreviewStream && (
+                      <div className="space-y-2">
+                        <span className="text-xs text-muted-foreground">Уровень сигнала</span>
+                        <AudioLevelMeter stream={audioPreviewStream} />
+                      </div>
+                    )}
+
+                    {supportsAudioOutput && audioOutputDevices.length > 0 && (
+                      <DeviceSelect
+                        label="Динамики"
+                        devices={audioOutputDevices}
+                        selectedDeviceId={selectedAudioOutputId}
+                        onDeviceChange={setAudioOutputDevice}
+                        kind="audiooutput"
+                      />
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             )}
-            title={isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
-          >
-            {isMuted ? (
-              <MicOff className="w-6 h-6 text-white" />
-            ) : (
-              <Mic className="w-6 h-6 text-white" />
-            )}
-          </Button>
+          </div>
+
+          {/* Camera Button with Settings */}
+          <div className="relative">
+            <Button
+              variant={isCameraOff ? 'destructive' : 'ghost'}
+              size="icon"
+              onClick={toggleCamera}
+              className={cn(
+                'w-14 h-14 rounded-full transition-all duration-200 hover:scale-105 active:scale-95',
+                isCameraOff
+                  ? 'bg-destructive hover:bg-destructive/90'
+                  : 'bg-zinc-700 hover:bg-zinc-600'
+              )}
+              title={isCameraOff ? 'Включить камеру' : 'Выключить камеру'}
+            >
+              {isCameraOff ? (
+                <VideoOff className="w-6 h-6 text-white" />
+              ) : (
+                <Video className="w-6 h-6 text-white" />
+              )}
+            </Button>
+
+            {/* Camera Settings Dropdown */}
+            <Popover
+              onOpenChange={(open) => {
+                // Request permission when opening dropdown if no devices yet
+                if (open && validVideoInputDevices.length === 0) {
+                  requestVideoPermission()
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card border border-border/50 flex items-center justify-center hover:bg-muted transition-colors shadow-sm"
+                  aria-label="Настройки камеры"
+                >
+                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-72 bg-card border-border/50 shadow-soft-lg p-4"
+                align="center"
+                side="top"
+                sideOffset={8}
+              >
+                {validVideoInputDevices.length > 0 ? (
+                  <DeviceSelect
+                    label="Камера"
+                    devices={videoInputDevices}
+                    selectedDeviceId={selectedVideoId}
+                    onDeviceChange={setVideoDevice}
+                    kind="videoinput"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    Загрузка устройств...
+                  </p>
+                )}
+              </PopoverContent>
+            </Popover>
+          </div>
 
           {/* Screen Share Button */}
           <Button
@@ -292,23 +469,6 @@ function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: R
             )}
           </Button>
 
-          {/* Settings Button */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="w-14 h-14 rounded-full bg-zinc-700 hover:bg-zinc-600 transition-all duration-200 hover:scale-105 active:scale-95"
-                title="Настройки аудио"
-              >
-                <Settings className="w-6 h-6 text-white" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 bg-card border-border/50 shadow-soft-lg">
-              <AudioSettings room={room} compact />
-            </PopoverContent>
-          </Popover>
-
           {/* Leave Button */}
           <Button
             variant="destructive"
@@ -328,6 +488,40 @@ function RoomContent({ roomId, roomName, participantName, onLeave, secretId }: R
 interface ParticipantTileProps {
   participant: any
   isLocal: boolean
+  totalParticipants?: number
+}
+
+/**
+ * Calculate optimal grid layout based on participant count.
+ * Returns CSS grid styles for responsive tile arrangement.
+ */
+function getGridStyle(count: number): React.CSSProperties {
+  // Grid configuration: [columns, rows]
+  const layouts: Record<number, [number, number]> = {
+    1: [1, 1],
+    2: [2, 1],
+    3: [3, 1],
+    4: [2, 2],
+    5: [3, 2],
+    6: [3, 2],
+    7: [4, 2],
+    8: [4, 2],
+    9: [3, 3],
+    10: [4, 3],
+    11: [4, 3],
+    12: [4, 3],
+  }
+
+  const [cols, rows] = layouts[count] || [
+    Math.ceil(Math.sqrt(count)),
+    Math.ceil(count / Math.ceil(Math.sqrt(count))),
+  ]
+
+  return {
+    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+    gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+    placeItems: 'center',
+  }
 }
 
 // Avatar colors - softer, modern palette
@@ -345,131 +539,200 @@ function getAvatarColor(name: string): string {
   return avatarColors[hash % avatarColors.length]
 }
 
-function ParticipantTile({ participant, isLocal }: ParticipantTileProps) {
-  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: false })
-  const audioTrack = tracks.find(
-    (t) => t.participant.identity === participant.identity && t.source === Track.Source.Microphone
+function ParticipantTile({ participant, isLocal, totalParticipants = 1 }: ParticipantTileProps) {
+  const tracks = useTracks([Track.Source.Microphone, Track.Source.Camera], { onlySubscribed: false })
+  const cameraTrack = tracks.find(
+    (t) => t.participant.identity === participant.identity && t.source === Track.Source.Camera
   )
 
   const isSpeaking = participant.isSpeaking
-  const isMuted = !audioTrack?.publication?.isMuted === false
+  const isMuted = !participant.isMicrophoneEnabled
+  const hasVideo = cameraTrack && !cameraTrack.publication?.isMuted
   const avatarColor = getAvatarColor(participant.name || participant.identity)
 
+  // Adaptive sizing based on participant count
+  const isSmallGrid = totalParticipants <= 2
+  const isMediumGrid = totalParticipants <= 4
+  const avatarSize = isSmallGrid ? 'w-24 h-24 text-3xl' : isMediumGrid ? 'w-20 h-20 text-2xl' : 'w-16 h-16 text-xl'
+  const nameSize = isSmallGrid ? 'text-lg' : isMediumGrid ? 'text-base' : 'text-sm'
+  const padding = isSmallGrid ? 'p-4' : isMediumGrid ? 'p-3' : 'p-2'
+
   return (
-    <div
-      className={cn(
-        'relative flex flex-col items-center p-5 pb-4 rounded-2xl bg-card border-2 transition-all duration-300 overflow-hidden',
-        isSpeaking
-          ? 'border-primary shadow-soft-lg pulse-glow'
-          : 'border-border/30 shadow-soft',
-        isLocal && 'border-primary/50'
-      )}
-    >
-      {/* Avatar */}
+    <div className="w-full h-full flex items-center justify-center" style={{ containerType: 'size' }}>
       <div
         className={cn(
-          'w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold text-white mb-3 shadow-soft bg-gradient-to-br transition-transform duration-300',
-          avatarColor,
-          isSpeaking && 'scale-105'
+          'participant-tile relative rounded-2xl bg-card border-2 transition-all duration-300 overflow-hidden',
+          isSpeaking
+            ? 'border-primary shadow-soft-lg pulse-glow'
+            : 'border-border/30 shadow-soft',
+          isLocal && 'border-primary/50'
         )}
       >
-        {participant.name?.charAt(0)?.toUpperCase() || '?'}
-      </div>
-
-      {/* Name */}
-      <p className="text-foreground font-medium text-center truncate max-w-full text-sm mb-3">
-        {participant.name || participant.identity}
-        {isLocal && <span className="text-muted-foreground ml-1">(вы)</span>}
-      </p>
-
-      {/* Speaking indicator - always visible area */}
-      <div className="flex items-end justify-center gap-0.5 h-4 w-full">
-        {isSpeaking ? (
+        {hasVideo ? (
+          /* Video Mode */
           <>
-            <span className="w-1 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
-            <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
-            <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
-            <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
-            <span className="w-1 bg-primary rounded-full sound-wave" style={{ height: '30%' }} />
+            <VideoTrack
+              trackRef={cameraTrack}
+              className={cn(
+                'w-full h-full object-cover',
+                isLocal && 'scale-x-[-1]'
+              )}
+            />
+            {/* Name overlay */}
+            <div className={cn('absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent', padding)}>
+              <p className={cn('text-white font-medium truncate', nameSize)}>
+                {participant.name || participant.identity}
+                {isLocal && <span className="text-white/70 ml-1">(вы)</span>}
+              </p>
+            </div>
+            {/* Mute indicator */}
+            {isMuted && (
+              <div className={cn('absolute top-3 right-3 bg-destructive rounded-lg shadow-soft', isSmallGrid ? 'p-2' : 'p-1.5')}>
+                <MicOff className={cn(isSmallGrid ? 'w-4 h-4' : 'w-3 h-3', 'text-destructive-foreground')} />
+              </div>
+            )}
+            {/* Speaking indicator */}
+            {isSpeaking && (
+              <div className={cn('absolute top-3 left-3 flex items-end gap-0.5', isSmallGrid ? 'h-5' : 'h-4')}>
+                <span className="w-1 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
+                <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
+                <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
+                <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
+              </div>
+            )}
           </>
         ) : (
-          <>
-            <span className="w-1 h-1 bg-muted-foreground/30 rounded-full" />
-            <span className="w-1 h-1.5 bg-muted-foreground/30 rounded-full" />
-            <span className="w-1 h-2 bg-muted-foreground/30 rounded-full" />
-            <span className="w-1 h-1.5 bg-muted-foreground/30 rounded-full" />
-            <span className="w-1 h-1 bg-muted-foreground/30 rounded-full" />
-          </>
+          /* Avatar Mode - centered content within container */
+          <div className={cn('absolute inset-0 flex flex-col items-center justify-center', padding)}>
+            {/* Avatar */}
+            <div
+              className={cn(
+                'rounded-2xl flex items-center justify-center font-bold text-white mb-3 shadow-soft bg-gradient-to-br transition-transform duration-300',
+                avatarSize,
+                avatarColor,
+                isSpeaking && 'scale-105'
+              )}
+            >
+              {participant.name?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+
+            {/* Name */}
+            <p className={cn('text-foreground font-medium text-center truncate max-w-full mb-2', nameSize)}>
+              {participant.name || participant.identity}
+              {isLocal && <span className="text-muted-foreground ml-1">(вы)</span>}
+            </p>
+
+            {/* Speaking indicator */}
+            <div className={cn('flex items-end justify-center gap-0.5 w-full', isSmallGrid ? 'h-5' : 'h-4')}>
+              {isSpeaking ? (
+                <>
+                  <span className="w-1 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
+                  <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
+                  <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
+                  <span className="w-1 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
+                  <span className="w-1 bg-primary rounded-full sound-wave" style={{ height: '30%' }} />
+                </>
+              ) : (
+                <>
+                  <span className="w-1 h-1 bg-muted-foreground/30 rounded-full" />
+                  <span className="w-1 h-1.5 bg-muted-foreground/30 rounded-full" />
+                  <span className="w-1 h-2 bg-muted-foreground/30 rounded-full" />
+                  <span className="w-1 h-1.5 bg-muted-foreground/30 rounded-full" />
+                  <span className="w-1 h-1 bg-muted-foreground/30 rounded-full" />
+                </>
+              )}
+            </div>
+
+            {/* Mute indicator */}
+            {isMuted && (
+              <div className={cn('absolute top-3 right-3 bg-destructive rounded-lg shadow-soft', isSmallGrid ? 'p-2' : 'p-1.5')}>
+                <MicOff className={cn(isSmallGrid ? 'w-4 h-4' : 'w-3 h-3', 'text-destructive-foreground')} />
+              </div>
+            )}
+
+            {/* Camera off indicator */}
+            <div className={cn('absolute bottom-3 right-3 bg-muted rounded-md', isSmallGrid ? 'p-1.5' : 'p-1')}>
+              <VideoOff className={cn(isSmallGrid ? 'w-4 h-4' : 'w-3 h-3', 'text-muted-foreground')} />
+            </div>
+          </div>
         )}
       </div>
-
-      {/* Mute indicator */}
-      {isMuted && (
-        <div className="absolute top-3 right-3 p-1.5 bg-destructive rounded-lg shadow-soft">
-          <MicOff className="w-3 h-3 text-destructive-foreground" />
-        </div>
-      )}
     </div>
   )
 }
 
 function ParticipantTileCompact({ participant, isLocal }: ParticipantTileProps) {
-  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: false })
-  const audioTrack = tracks.find(
-    (t) => t.participant.identity === participant.identity && t.source === Track.Source.Microphone
+  const tracks = useTracks([Track.Source.Microphone, Track.Source.Camera], { onlySubscribed: false })
+  const cameraTrack = tracks.find(
+    (t) => t.participant.identity === participant.identity && t.source === Track.Source.Camera
   )
 
   const isSpeaking = participant.isSpeaking
-  const isMuted = !audioTrack?.publication?.isMuted === false
+  const isMuted = !participant.isMicrophoneEnabled
+  const hasVideo = cameraTrack && !cameraTrack.publication?.isMuted
   const avatarColor = getAvatarColor(participant.name || participant.identity)
 
   return (
     <div
       className={cn(
-        'relative flex items-center gap-3 p-3 rounded-xl bg-card border transition-all duration-300',
+        'relative rounded-xl bg-card border-2 transition-all duration-300 overflow-hidden',
         isSpeaking
           ? 'border-primary shadow-soft pulse-glow'
           : 'border-border/30 shadow-soft',
         isLocal && 'border-primary/50'
       )}
+      style={{ aspectRatio: '16/9' }}
     >
-      {/* Avatar */}
-      <div
-        className={cn(
-          'w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0 bg-gradient-to-br transition-transform duration-300',
-          avatarColor,
-          isSpeaking && 'scale-105'
-        )}
-      >
-        {participant.name?.charAt(0)?.toUpperCase() || '?'}
-      </div>
-
-      {/* Name and indicators */}
-      <div className="flex-1 min-w-0">
-        <p className="text-foreground font-medium text-sm truncate">
-          {participant.name || participant.identity}
-          {isLocal && <span className="text-muted-foreground ml-1">(вы)</span>}
-        </p>
-        {/* Speaking indicator */}
-        <div className="flex items-end gap-0.5 h-3 mt-1">
-          {isSpeaking ? (
-            <>
-              <span className="w-0.5 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
-              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
-              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
-              <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
-            </>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {isMuted ? 'Без звука' : 'Готов'}
-            </span>
-          )}
+      {hasVideo ? (
+        /* Video mode */
+        <>
+          <VideoTrack
+            trackRef={cameraTrack}
+            className={cn(
+              'w-full h-full object-cover',
+              isLocal && 'scale-x-[-1]'
+            )}
+          />
+          {/* Name overlay */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+            <p className="text-white text-xs font-medium truncate">
+              {participant.name || participant.identity}
+              {isLocal && <span className="text-white/70 ml-1">(вы)</span>}
+            </p>
+          </div>
+        </>
+      ) : (
+        /* Avatar mode */
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
+          <div
+            className={cn(
+              'w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold text-white bg-gradient-to-br transition-transform duration-300 mb-2',
+              avatarColor,
+              isSpeaking && 'scale-105'
+            )}
+          >
+            {participant.name?.charAt(0)?.toUpperCase() || '?'}
+          </div>
+          <p className="text-foreground text-xs font-medium truncate max-w-full text-center">
+            {participant.name || participant.identity}
+            {isLocal && <span className="text-muted-foreground ml-1">(вы)</span>}
+          </p>
         </div>
-      </div>
+      )}
+
+      {/* Speaking indicator */}
+      {isSpeaking && (
+        <div className="absolute top-2 left-2 flex items-end gap-0.5 h-3">
+          <span className="w-0.5 bg-primary rounded-full sound-wave" style={{ height: '40%' }} />
+          <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-1" style={{ height: '80%' }} />
+          <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-2" style={{ height: '100%' }} />
+          <span className="w-0.5 bg-primary rounded-full sound-wave sound-wave-delay-3" style={{ height: '60%' }} />
+        </div>
+      )}
 
       {/* Mute indicator */}
       {isMuted && (
-        <div className="p-1 bg-destructive rounded-lg flex-shrink-0">
+        <div className="absolute top-2 right-2 p-1 bg-destructive rounded-md">
           <MicOff className="w-3 h-3 text-destructive-foreground" />
         </div>
       )}

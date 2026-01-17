@@ -3,21 +3,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { VideoRoom } from '@/components/room/VideoRoom'
-import { AudioSettings } from '@/components/audio'
+import { MediaToggles } from '@/components/media'
+import { VideoPreview, useVideoDevices } from '@/components/video'
+import { useAudioDevices } from '@/components/audio'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Loader2, Settings, ChevronDown, ArrowLeft, Mic, Waves, History } from 'lucide-react'
+import { Loader2, ArrowLeft, Mic, Waves, History } from 'lucide-react'
 
 const USER_NAME_KEY = 'tinkervoid_user_name'
-
-interface AudioDevices {
-  audioInputDeviceId: string
-  audioOutputDeviceId: string
-}
+const MIC_ENABLED_KEY = 'tinkervoid-mic-enabled'
+const CAMERA_ENABLED_KEY = 'tinkervoid-camera-enabled'
+const MEDIA_INITIALIZED_KEY = 'tinkervoid-media-initialized'
 
 interface RoomInfo {
   id: string
@@ -36,23 +35,72 @@ export default function SecretRoomPage() {
   const [userName, setUserName] = useState('')
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [audioDevices, setAudioDevices] = useState<AudioDevices>({
-    audioInputDeviceId: '',
-    audioOutputDeviceId: '',
-  })
+  const [micEnabled, setMicEnabled] = useState(false)
+  const [cameraEnabled, setCameraEnabled] = useState(false)
 
-  const handleDevicesSelected = useCallback((devices: AudioDevices) => {
-    setAudioDevices(devices)
-  }, [])
+  // Video devices hook for preview and device selection
+  const {
+    videoInputDevices,
+    selectedVideoId,
+    previewStream: videoPreviewStream,
+    permissionGranted: videoPermissionGranted,
+    isEnabled: videoIsEnabled,
+    setEnabled: setVideoEnabled,
+    setVideoDevice,
+    stopPreview: stopVideoPreview,
+    requestPermission: requestVideoPermission,
+  } = useVideoDevices()
 
-  // Load saved name and fetch room info on mount
+  // Audio devices hook for mic state and device selection
+  const {
+    audioInputDevices,
+    audioOutputDevices,
+    selectedInputId: selectedAudioInputId,
+    selectedOutputId: selectedAudioOutputId,
+    previewStream: audioPreviewStream,
+    permissionGranted: audioPermissionGranted,
+    supportsAudioOutput,
+    setInputDevice: setAudioInputDevice,
+    setOutputDevice: setAudioOutputDevice,
+  } = useAudioDevices()
+
+  const handleMicToggle = useCallback(() => {
+    const newState = !micEnabled
+    setMicEnabled(newState)
+    localStorage.setItem(MIC_ENABLED_KEY, String(newState))
+    localStorage.setItem(MEDIA_INITIALIZED_KEY, 'true')
+  }, [micEnabled])
+
+  const handleCameraToggle = useCallback(() => {
+    const newState = !cameraEnabled
+    setCameraEnabled(newState)
+    setVideoEnabled(newState)
+  }, [cameraEnabled, setVideoEnabled])
+
+  // Load saved name and media states on mount
   useEffect(() => {
     const savedName = localStorage.getItem(USER_NAME_KEY)
+    const savedMicEnabled = localStorage.getItem(MIC_ENABLED_KEY)
+    const savedCameraEnabled = localStorage.getItem(CAMERA_ENABLED_KEY)
+    const mediaInitialized = localStorage.getItem(MEDIA_INITIALIZED_KEY)
+
     if (savedName) {
       setUserName(savedName)
     }
+
+    // For returning users, restore their preferences
+    if (mediaInitialized === 'true') {
+      if (savedMicEnabled === 'true') {
+        setMicEnabled(true)
+      }
+      if (savedCameraEnabled === 'true') {
+        setCameraEnabled(true)
+        setVideoEnabled(true)
+      }
+    }
+
     fetchRoomInfo()
-  }, [secretId])
+  }, [secretId, setVideoEnabled])
 
   const fetchRoomInfo = async () => {
     try {
@@ -172,8 +220,11 @@ export default function SecretRoomPage() {
           participantName={userName}
           onLeave={handleLeave}
           secretId={secretId}
-          audioInputDeviceId={audioDevices.audioInputDeviceId}
-          audioOutputDeviceId={audioDevices.audioOutputDeviceId}
+          audioInputDeviceId={selectedAudioInputId}
+          audioOutputDeviceId={selectedAudioOutputId}
+          videoInputDeviceId={selectedVideoId}
+          micEnabled={micEnabled}
+          cameraEnabled={cameraEnabled}
         />
       </div>
     )
@@ -234,6 +285,38 @@ export default function SecretRoomPage() {
           {/* Join card */}
           <Card className="shadow-soft-lg border-border/50 fade-in-up fade-in-delay-1">
             <CardContent className="p-6 space-y-5">
+              {/* Video Preview */}
+              <VideoPreview
+                stream={cameraEnabled ? videoPreviewStream : null}
+                className="w-full aspect-video"
+                mirrored
+              />
+
+              {/* Media Toggles */}
+              <MediaToggles
+                micEnabled={micEnabled}
+                cameraEnabled={cameraEnabled}
+                onMicToggle={handleMicToggle}
+                onCameraToggle={handleCameraToggle}
+                micPermissionGranted={audioPermissionGranted}
+                cameraPermissionGranted={videoPermissionGranted}
+                // Audio device props
+                audioInputDevices={audioInputDevices}
+                audioOutputDevices={audioOutputDevices}
+                selectedAudioInputId={selectedAudioInputId}
+                selectedAudioOutputId={selectedAudioOutputId}
+                onAudioInputChange={setAudioInputDevice}
+                onAudioOutputChange={setAudioOutputDevice}
+                audioPreviewStream={audioPreviewStream}
+                supportsAudioOutput={supportsAudioOutput}
+                // Video device props
+                videoInputDevices={videoInputDevices}
+                selectedVideoInputId={selectedVideoId}
+                onVideoInputChange={setVideoDevice}
+                onRequestVideoPermission={requestVideoPermission}
+              />
+
+              {/* Name Input */}
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium">
                   Ваше имя
@@ -248,24 +331,6 @@ export default function SecretRoomPage() {
                   className="h-11 bg-surface-primary border-border/50 focus:border-primary/50 transition-colors"
                 />
               </div>
-
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-between px-3 py-2 h-auto text-muted-foreground hover:text-foreground hover:bg-surface-secondary rounded-lg"
-                  >
-                    <span className="flex items-center gap-2 text-sm">
-                      <Settings className="w-4 h-4" />
-                      Настройки аудио
-                    </span>
-                    <ChevronDown className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                  <AudioSettings onDevicesChange={handleDevicesSelected} />
-                </CollapsibleContent>
-              </Collapsible>
 
               {error && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
