@@ -10,7 +10,7 @@ import {
   useRoomContext,
   VideoTrack,
 } from '@livekit/components-react'
-import { Track, RoomOptions } from 'livekit-client'
+import { Track, RoomOptions, VideoPresets } from 'livekit-client'
 import '@livekit/components-styles'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -57,10 +57,20 @@ export function VideoRoom({
     },
     videoCaptureDefaults: {
       deviceId: videoInputDeviceId || undefined,
+      resolution: VideoPresets.h720.resolution,
+    },
+    publishDefaults: {
+      videoEncoding: {
+        maxBitrate: 1_500_000,
+        maxFramerate: 30,
+      },
+      simulcast: true,
     },
     audioOutput: {
       deviceId: audioOutputDeviceId || undefined,
     },
+    dynacast: true,
+    adaptiveStream: true,
   }
 
   return (
