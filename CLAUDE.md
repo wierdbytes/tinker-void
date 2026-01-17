@@ -2,8 +2,9 @@
 
 ## Project Description
 
-TinkerVoid — a web application for team voice meetings with features:
-- Voice communication via LiveKit (self-hosted)
+TinkerVoid — a web application for team video/voice meetings with features:
+- Video conferencing with adaptive grid layout (LiveKit, self-hosted)
+- Screen sharing with participant sidebar
 - Automatic recording of each participant separately (LiveKit Egress → MinIO)
 - Speech-to-text transcription (faster-whisper on CPU)
 - Meeting summarization (Claude API)
@@ -77,6 +78,10 @@ tinkervoid/
 │   │   │       ├── transcribe/   # Transcription trigger
 │   │   │       └── summarize/    # Summarization via Claude
 │   │   ├── components/           # React components
+│   │   │   ├── room/             # VideoRoom, participant tiles
+│   │   │   ├── video/            # Video preview, useVideoDevices hook
+│   │   │   ├── audio/            # Audio device selection, level meter
+│   │   │   └── media/            # Media toggles (mic/camera)
 │   │   └── lib/
 │   │       ├── livekit.ts        # LiveKit client and startTrackRecording()
 │   │       ├── rabbitmq.ts       # RabbitMQ publisher for transcription tasks

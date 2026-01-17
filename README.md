@@ -6,10 +6,11 @@ A simple way to organize team calls without the hassle.
 
 **No account required** — just create a room and share the link.
 
+- **Video conferencing** — webcam support with adaptive grid layout for any number of participants
+- **Screen sharing** — present your screen during calls
 - **Automatic recording** — every participant's audio is recorded separately
 - **Automatic transcription** — speech-to-text with speaker names and timestamps
 - **Meeting playback** — listen to recordings with individual volume control per participant
-- **Screen sharing** — present your screen during calls
 
 ## Quick Start
 
