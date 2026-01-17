@@ -732,7 +732,7 @@ function MeetingsList({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
                   <a
-                    href={`/s/${meeting.roomSecretId}/meetings/${meeting.id}`}
+                    href={`/m/${meeting.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium hover:text-primary hover:underline transition-colors flex items-center gap-1.5"

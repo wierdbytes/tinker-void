@@ -13,15 +13,15 @@ interface TranscriptionResult {
  * POST /api/transcribe/deepgram
  * Transcribe meeting recordings using Deepgram API
  *
- * Body: { meetingId: string, secretId: string }
+ * Body: { meetingId: string }
  */
 export async function POST(request: NextRequest) {
   try {
-    const { meetingId, secretId } = await request.json()
+    const { meetingId } = await request.json()
 
-    if (!meetingId || !secretId) {
+    if (!meetingId) {
       return NextResponse.json(
-        { error: 'meetingId and secretId are required' },
+        { error: 'meetingId is required' },
         { status: 400 }
       )
     }
@@ -34,11 +34,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get meeting with room for authorization
+    // Get meeting with recordings
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
       include: {
-        room: true,
         recordings: {
           where: { deepgramTranscribed: false },
           include: { participant: true },
@@ -48,11 +47,6 @@ export async function POST(request: NextRequest) {
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
-    }
-
-    // Verify secretId matches the room
-    if (meeting.room.secretId !== secretId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check if there are recordings to transcribe

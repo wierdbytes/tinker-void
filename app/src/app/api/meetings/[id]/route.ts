@@ -8,12 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const secretId = request.nextUrl.searchParams.get('secretId')
     const sourceParam = request.nextUrl.searchParams.get('source') as TranscriptionSource | null
-
-    if (!secretId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Validate source parameter
     const validSources: TranscriptionSource[] = ['WHISPER', 'DEEPGRAM']
@@ -22,7 +17,13 @@ export async function GET(
     const meeting = await prisma.meeting.findUnique({
       where: { id },
       include: {
-        room: true,
+        room: {
+          select: {
+            id: true,
+            name: true,
+            // NOT selecting secretId - it must never be exposed
+          },
+        },
         participants: true,
         utterances: {
           where: source ? { source } : undefined,
@@ -37,11 +38,6 @@ export async function GET(
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
-    }
-
-    // Verify secretId matches the room
-    if (meeting.room.secretId !== secretId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get available transcription sources for this meeting

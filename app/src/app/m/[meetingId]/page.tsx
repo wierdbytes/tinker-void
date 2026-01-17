@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { ArrowLeft, Calendar, Users, Clock, Loader2, Waves, FileText, Mic, Download, Settings2, Check, Sparkles } from 'lucide-react'
+import { Calendar, Users, Clock, Loader2, Waves, FileText, Download, Settings2, Check, Sparkles } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { useAudioPlayer } from '@/hooks/useAudioPlayer'
@@ -99,8 +99,8 @@ interface Meeting {
   endedAt: string | null
   status: string
   room: {
+    id: string
     name: string
-    secretId: string
   }
   participants: Participant[]
   utterances: Utterance[]
@@ -127,10 +127,8 @@ const participantGradients = [
   { bg: 'bg-gradient-to-r from-purple-500/10 to-violet-500/10', text: 'text-purple-600 dark:text-purple-400', badge: 'bg-purple-500' },
 ]
 
-export default function SecretMeetingDetailPage() {
+export default function SharedMeetingPage() {
   const params = useParams()
-  const router = useRouter()
-  const secretId = params.secretId as string
   const meetingId = params.meetingId as string
 
   const [meeting, setMeeting] = useState<Meeting | null>(null)
@@ -146,7 +144,7 @@ export default function SecretMeetingDetailPage() {
 
   useEffect(() => {
     fetchMeeting()
-  }, [meetingId, secretId])
+  }, [meetingId])
 
   useEffect(() => {
     fetch('/api/transcribe/deepgram/status')
@@ -157,12 +155,9 @@ export default function SecretMeetingDetailPage() {
 
   const fetchMeeting = async () => {
     try {
-      // Fetch with WHISPER source by default
-      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}&source=WHISPER`)
+      const res = await fetch(`/api/meetings/${meetingId}?source=WHISPER`)
       if (!res.ok) {
-        if (res.status === 401) {
-          setError('Нет доступа к этой встрече')
-        } else if (res.status === 404) {
+        if (res.status === 404) {
           setError('Встреча не найдена')
         } else {
           setError('Ошибка загрузки')
@@ -180,10 +175,9 @@ export default function SecretMeetingDetailPage() {
     }
   }
 
-  // Fetch only utterances for a specific source (doesn't reload player)
   const fetchUtterances = async (source: TranscriptionSource) => {
     try {
-      const res = await fetch(`/api/meetings/${meetingId}?secretId=${secretId}&source=${source}`)
+      const res = await fetch(`/api/meetings/${meetingId}?source=${source}`)
       if (!res.ok) return
       const data = await res.json()
       setUtterances(data.utterances || [])
@@ -201,7 +195,7 @@ export default function SecretMeetingDetailPage() {
       const res = await fetch('/api/transcribe/deepgram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meetingId, secretId }),
+        body: JSON.stringify({ meetingId }),
       })
 
       if (!res.ok) {
@@ -209,7 +203,6 @@ export default function SecretMeetingDetailPage() {
         throw new Error(data.error || 'Ошибка транскрипции')
       }
 
-      // Refresh utterances with Deepgram source (doesn't reload player)
       await fetchUtterances('DEEPGRAM')
     } catch (err) {
       console.error('Deepgram transcription error:', err)
@@ -225,17 +218,14 @@ export default function SecretMeetingDetailPage() {
     setIsSourcePopoverOpen(false)
     setTranscriptionSource(source)
 
-    // Only fetch if there's existing transcription for this source
     const sourceData = availableSources.find((s) => s.source === source)
     if (sourceData && sourceData.count > 0) {
       await fetchUtterances(source)
     }
   }
 
-  // Check if current source has transcription data
   const currentSourceHasData = () => {
     if (transcriptionSource === 'WHISPER') {
-      // For Whisper, check if we have utterances loaded
       const whisperCount = availableSources.find((s) => s.source === 'WHISPER')?.count || 0
       return whisperCount > 0 && utterances.length > 0
     }
@@ -320,7 +310,7 @@ export default function SecretMeetingDetailPage() {
     setIsDownloadingAudio(true)
 
     try {
-      const response = await fetch(`/api/meetings/${meetingId}/audio?secretId=${secretId}`)
+      const response = await fetch(`/api/meetings/${meetingId}/audio`)
 
       if (!response.ok) {
         const error = await response.json()
@@ -332,7 +322,6 @@ export default function SecretMeetingDetailPage() {
       const link = document.createElement('a')
       link.href = url
 
-      // Get filename from Content-Disposition header or generate one
       const disposition = response.headers.get('Content-Disposition')
       let filename = 'meeting.mp3'
       if (disposition) {
@@ -377,16 +366,7 @@ export default function SecretMeetingDetailPage() {
         </div>
 
         <header className="relative z-10 px-6 py-4">
-          <div className="max-w-5xl mx-auto flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push(`/s/${secretId}/history`)}
-              className="text-muted-foreground hover:text-foreground -ml-2"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              К истории
-            </Button>
+          <div className="max-w-5xl mx-auto flex items-center justify-end">
             <ThemeToggle />
           </div>
         </header>
@@ -397,10 +377,7 @@ export default function SecretMeetingDetailPage() {
               <div className="w-12 h-12 rounded-xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
                 <FileText className="w-6 h-6 text-destructive" />
               </div>
-              <p className="text-muted-foreground mb-4">{error || 'Встреча не найдена'}</p>
-              <Button onClick={() => router.push(`/s/${secretId}/history`)}>
-                Вернуться к истории
-              </Button>
+              <p className="text-muted-foreground">{error || 'Встреча не найдена'}</p>
             </CardContent>
           </Card>
         </main>
@@ -415,51 +392,30 @@ export default function SecretMeetingDetailPage() {
         <div className="absolute -top-1/2 -right-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary/5 to-accent/5 blur-3xl" />
       </div>
 
-      {/* Header */}
+      {/* Header with meeting title */}
       <header className="flex-shrink-0 z-20 px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/s/${secretId}/history`)}
-            className="text-muted-foreground hover:text-foreground -ml-2"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            К истории
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => router.push(`/s/${secretId}`)}
-              className="bg-primary btn-primary-hover text-primary-foreground"
-            >
-              <Mic className="w-4 h-4 mr-2" />
-              Присоединиться
-            </Button>
-            <ThemeToggle />
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Waves className="w-5 h-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-foreground truncate">{meeting.room.name}</h1>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calendar className="w-3 h-3 flex-shrink-0" />
+                <span>{formatDate(meeting.startedAt)}</span>
+              </div>
+            </div>
           </div>
+          <ThemeToggle />
         </div>
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 flex-1 flex flex-col min-h-0 px-6 py-8">
+      <main className="relative z-10 flex-1 flex flex-col min-h-0 px-6 py-6">
         <div className="max-w-5xl mx-auto w-full flex flex-col flex-1 min-h-0">
-          {/* Meeting header */}
+          {/* Meeting stats */}
           <section className="mb-6 fade-in-up flex-shrink-0">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Waves className="w-6 h-6 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-2xl font-bold text-foreground truncate">{meeting.room.name}</h1>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
-                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{formatDate(meeting.startedAt)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Meeting stats */}
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-secondary">
                 <Clock className="w-4 h-4 flex-shrink-0" />

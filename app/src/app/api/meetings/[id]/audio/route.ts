@@ -42,18 +42,18 @@ export async function GET(
 ) {
   const { id: meetingId } = await params
 
-  // Check authorization via secretId
-  const secretId = request.nextUrl.searchParams.get('secretId')
-  if (!secretId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     // Get meeting with recordings
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
       include: {
-        room: true,
+        room: {
+          select: {
+            id: true,
+            name: true,
+            // NOT selecting secretId - it must never be exposed
+          },
+        },
         recordings: {
           include: { participant: true },
         },
@@ -62,11 +62,6 @@ export async function GET(
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
-    }
-
-    // Verify access
-    if (meeting.room.secretId !== secretId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     if (!meeting.recordings || meeting.recordings.length === 0) {
