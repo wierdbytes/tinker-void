@@ -105,7 +105,7 @@ services:
 
   # LiveKit Server - EXTERNAL PORTS (required for WebRTC)
   livekit:
-    image: livekit/livekit-server:v1.10.3
+    image: livekit/livekit-server:v1.9.11
     container_name: tinkervoid-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml

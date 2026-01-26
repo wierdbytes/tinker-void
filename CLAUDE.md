@@ -15,7 +15,7 @@ TinkerVoid — a web application for team video/voice meetings with features:
 - **Frontend:** Next.js 14 (App Router), Tailwind CSS, shadcn/ui
 - **Backend:** Next.js API Routes
 - **Database:** PostgreSQL + Prisma ORM
-- **Voice:** LiveKit (self-hosted, v1.10.3)
+- **Voice:** LiveKit (self-hosted, v1.9.11)
 - **Recording:** LiveKit Egress → MinIO (S3)
 - **Transcription:** faster-whisper large-v3-turbo (Python, runs on CPU) — [details](docs/TRANSCRIBER.md)
 - **Alternative Transcription:** Deepgram API (optional, on-demand)
