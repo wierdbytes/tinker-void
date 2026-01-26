@@ -249,7 +249,8 @@ generate_livekit_configs() {
     if [ -f "$LIVEKIT_TEMPLATE" ]; then
         cat "$LIVEKIT_TEMPLATE" | \
             sed "s|{{LIVEKIT_API_KEY}}|$LIVEKIT_API_KEY|g" | \
-            sed "s|{{LIVEKIT_API_SECRET}}|$LIVEKIT_API_SECRET|g" \
+            sed "s|{{LIVEKIT_API_SECRET}}|$LIVEKIT_API_SECRET|g" | \
+            sed "s|{{TRAEFIK_LIVEKIT_HOST}}|$TRAEFIK_LIVEKIT_HOST|g" \
             > "$LIVEKIT_CONFIG"
         log_success "Generated $LIVEKIT_CONFIG"
     else

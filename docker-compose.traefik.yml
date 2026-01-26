@@ -23,11 +23,13 @@ services:
 
   # LiveKit Server - Traefik labels (WebSocket support)
   livekit:
-    # Keep ports for UDP/TCP RTC traffic (cannot be proxied by Traefik)
+    # Keep ports for UDP/TCP RTC and TURN traffic (cannot be proxied by Traefik)
     # Only HTTP/WebSocket (7880) can be proxied
     ports:
       - "${LIVEKIT_TCP_PORT:-7881}:7881"   # RTC over TCP (direct)
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"  # RTC over UDP (direct)
+      - "3478:3478/udp"   # TURN UDP (direct, required for NAT traversal)
+      - "5349:5349"       # TURN TLS (direct, required for NAT traversal)
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik

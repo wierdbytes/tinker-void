@@ -6,6 +6,12 @@ rtc:
   tcp_port: 7881
   use_external_ip: false
 
+# TURN server for NAT traversal
+turn:
+  enabled: true
+  udp_port: 3478
+  tls_port: 5349
+
 # API keys
 keys:
   devkey: secret123456789012345678901234567890

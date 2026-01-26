@@ -105,7 +105,7 @@ services:
 
   # LiveKit Server - EXTERNAL PORTS (required for WebRTC)
   livekit:
-    image: livekit/livekit-server:v1.9.8
+    image: livekit/livekit-server:v1.10.3
     container_name: tinkervoid-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml
@@ -115,6 +115,8 @@ services:
       - "${LIVEKIT_HTTP_PORT:-7880}:7880"  # HTTP/WebSocket
       - "${LIVEKIT_TCP_PORT:-7881}:7881"   # RTC over TCP
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"  # RTC over UDP
+      - "3478:3478/udp"   # TURN UDP
+      - "5349:5349"       # TURN TLS
     depends_on:
       redis:
         condition: service_healthy
