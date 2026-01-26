@@ -29,14 +29,17 @@ services:
       - "${LIVEKIT_TCP_PORT:-7881}:7881"   # RTC over TCP (direct)
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"  # RTC over UDP (direct)
       - "3478:3478/udp"   # TURN UDP (direct, required for NAT traversal)
-      - "5349:5349"       # TURN TLS (direct, required for NAT traversal)
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
+      # HTTP/WebSocket router
       - traefik.http.routers.tinkervoid_livekit.rule=Host(`${TRAEFIK_LIVEKIT_HOST}`)
+      - traefik.http.routers.tinkervoid_livekit.entrypoints=websecure
       - traefik.http.routers.tinkervoid_livekit.tls=true
       - traefik.http.routers.tinkervoid_livekit.tls.certresolver=${TRAEFIK_CERTRESOLVER:-le}
+      # Service configuration
       - traefik.http.services.tinkervoid_livekit.loadbalancer.server.port=7880
+      - traefik.http.services.tinkervoid_livekit.loadbalancer.server.scheme=http
     networks:
       - tinkervoid-internal
       - traefik

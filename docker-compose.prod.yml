@@ -116,7 +116,6 @@ services:
       - "${LIVEKIT_TCP_PORT:-7881}:7881"   # RTC over TCP
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"  # RTC over UDP
       - "3478:3478/udp"   # TURN UDP
-      - "5349:5349"       # TURN TLS
     depends_on:
       redis:
         condition: service_healthy
