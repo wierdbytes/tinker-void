@@ -399,10 +399,14 @@ show_status() {
         if docker_compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
             echo "  Status: Running"
             local stream_len=$(docker_compose exec -T redis redis-cli XLEN transcription:tasks 2>/dev/null || echo "0")
+            local pending_raw=$(docker_compose exec -T redis redis-cli XPENDING transcription:tasks transcribers 2>/dev/null || echo "")
+            local pending_count=$(echo "$pending_raw" | head -1 | tr -d '[:space:]')
+            [[ "$pending_count" =~ ^[0-9]+$ ]] || pending_count="0"
             local retry_count=$(docker_compose exec -T redis redis-cli ZCARD transcription:retry 2>/dev/null || echo "0")
             local dlq_len=$(docker_compose exec -T redis redis-cli XLEN transcription:dlq 2>/dev/null || echo "0")
-            echo "  Stream (tasks):  $stream_len"
-            echo "  Retry (pending): $retry_count"
+            echo "  Stream (total):  $stream_len"
+            echo "  In progress:     $pending_count"
+            echo "  Retry (waiting): $retry_count"
             echo "  DLQ (failed):    $dlq_len"
         else
             echo "  Status: Not running or not healthy"
