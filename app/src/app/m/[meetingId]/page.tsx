@@ -531,7 +531,7 @@ export default function SharedMeetingPage() {
                     </Popover>
                   )}
                 </div>
-                {currentSourceHasData() && (
+                {meeting.status === 'COMPLETED' && currentSourceHasData() && (
                   <Button
                     variant="ghost"
                     size="sm"
