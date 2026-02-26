@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.consumer import start_consumer, stop_consumer
 from app.models.schemas import HealthResponse
-from app.services.rabbitmq import close_rabbitmq_service
+from app.services.redis_stream import close_redis_stream_service
 from app.services.storage import StorageService
 from app.services.transcriber import (
     TranscriberService,
@@ -53,10 +53,10 @@ async def lifespan(app: FastAPI):
         secure=settings.minio_use_ssl,
     )
 
-    # Start RabbitMQ consumer
-    logger.info(f"Starting RabbitMQ consumer (heartbeat={settings.rabbitmq_heartbeat}s)...")
+    # Start Redis Streams consumer
+    logger.info("Starting Redis Streams consumer...")
     await start_consumer(transcriber, storage)
-    logger.info("RabbitMQ consumer started!")
+    logger.info("Redis Streams consumer started!")
 
     logger.info("All services initialized!")
 
@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     # Cleanup
     logger.info("Shutting down...")
     await stop_consumer()
-    await close_rabbitmq_service()
+    await close_redis_stream_service()
     shutdown_transcription_executor()
     logger.info("Services shut down")
 
@@ -88,12 +88,12 @@ app.add_middleware(
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint."""
-    from app.services.rabbitmq import _rabbitmq_service
+    from app.services.redis_stream import _redis_stream_service
 
     return HealthResponse(
         status="healthy",
         model_loaded=transcriber.model_loaded if transcriber else False,
-        rabbitmq_connected=_rabbitmq_service.is_connected if _rabbitmq_service else False,
+        redis_connected=_redis_stream_service.is_connected if _redis_stream_service else False,
     )
 
 

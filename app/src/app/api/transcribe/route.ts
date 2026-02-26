@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { publishTranscriptionTask, TranscriptionTask } from '@/lib/rabbitmq'
+import { publishTranscriptionTask, TranscriptionTask } from '@/lib/taskQueue'
 import { randomUUID } from 'crypto'
 
 /**
  * Queue transcription tasks for a meeting.
- * Publishes tasks to RabbitMQ, results come via callback.
+ * Publishes tasks to Redis Streams, results come via callback.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No recordings to transcribe', count: 0 })
     }
 
-    // Publish tasks to RabbitMQ
+    // Publish tasks to Redis Streams
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const tasks: TranscriptionTask[] = []
 

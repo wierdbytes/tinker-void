@@ -19,7 +19,7 @@ TinkerVoid — a web application for team video/voice meetings with features:
 - **Recording:** LiveKit Egress → MinIO (S3)
 - **Transcription:** faster-whisper large-v3-turbo (Python, runs on CPU) — [details](docs/TRANSCRIBER.md)
 - **Alternative Transcription:** Deepgram API (optional, on-demand)
-- **Task Queue:** RabbitMQ 4.x (async transcription)
+- **Task Queue:** Redis Streams (async transcription) — [details](docs/redis-queue.md)
 - **Summarization:** Claude API (Anthropic)
 - **File Storage:** MinIO (S3-compatible)
 - **Containerization:** Docker Compose
@@ -43,9 +43,9 @@ Next.js: saves Recording to DB
          ↓
 LiveKit: room_finished webhook
          ↓
-Next.js: POST /api/transcribe → publish to RabbitMQ
+Next.js: POST /api/transcribe → publish to Redis Streams
          ↓
-RabbitMQ: transcription.tasks queue
+Redis: transcription:tasks stream
          ↓
 Transcriber Consumer: downloads OGG from MinIO, converts to WAV, transcribes
          ↓
@@ -84,7 +84,7 @@ tinkervoid/
 │   │   │   └── media/            # Media toggles (mic/camera)
 │   │   └── lib/
 │   │       ├── livekit.ts        # LiveKit client and startTrackRecording()
-│   │       ├── rabbitmq.ts       # RabbitMQ publisher for transcription tasks
+│   │       ├── taskQueue.ts      # Redis Streams publisher for transcription tasks
 │   │       ├── deepgram.ts       # Deepgram API client (alternative transcription)
 │   │       ├── claude.ts         # Claude API client
 │   │       └── prisma.ts         # Prisma client
@@ -97,12 +97,12 @@ tinkervoid/
 │   └── transcriber-py/           # Transcription service (Python)
 │       ├── Dockerfile
 │       └── app/
-│           ├── main.py           # FastAPI HTTP server + RabbitMQ consumer
-│           ├── consumer.py       # RabbitMQ consumer for transcription tasks
+│           ├── main.py           # FastAPI HTTP server + Redis Streams consumer
+│           ├── consumer.py       # Redis Streams consumer for transcription tasks
 │           ├── config.py         # Settings from env
 │           └── services/
 │               ├── transcriber.py # faster-whisper + sentence splitting
-│               ├── rabbitmq.py    # RabbitMQ client (aio-pika)
+│               ├── redis_stream.py # Redis Streams client (consumer, heartbeat, retry)
 │               ├── storage.py     # MinIO client
 │               └── audio.py       # ffmpeg conversion
 └── docker-compose.yml
@@ -118,7 +118,7 @@ tinkervoid/
 ### Start All Services
 ```bash
 # Infrastructure
-docker compose up -d postgres redis rabbitmq minio livekit livekit-egress transcriber
+docker compose up -d postgres redis minio livekit livekit-egress transcriber
 
 # Make recordings bucket public (required!)
 docker compose exec minio mc alias set local http://localhost:9000 minioadmin minioadmin123
@@ -148,7 +148,6 @@ npm run db:studio      # DB GUI
 docker compose logs -f livekit          # LiveKit server
 docker compose logs -f livekit-egress   # Egress (recording)
 docker compose logs -f transcriber      # Transcription
-docker compose logs -f rabbitmq         # RabbitMQ
 ```
 
 ### Production Deployment
@@ -187,9 +186,6 @@ MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin123
 MINIO_BUCKET=recordings
-
-# RabbitMQ
-RABBITMQ_URL=amqp://tinkervoid:tinkervoid_secret@localhost:5672/
 
 # Claude API (REQUIRED for summarization)
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -234,15 +230,10 @@ File: `app/src/lib/livekit.ts`
 
 Egress runs inside Docker, so MinIO endpoint is: `http://minio:9000`
 
-### 5. Async Transcription via RabbitMQ
+### 5. Async Transcription via Redis Streams
 File: `app/src/app/api/transcribe/route.ts`
 
-Next.js publishes tasks to RabbitMQ queue `transcription.tasks`. Transcriber consumer processes tasks asynchronously and sends results via HTTP callback to `/api/transcribe/callback`.
-
-Queue structure:
-- `transcription.tasks` — main task queue
-- `transcription.retry` — retry attempts (30 sec delay)
-- `transcription.dlq` — failed tasks for analysis
+Next.js publishes tasks to Redis stream `transcription:tasks`. Transcriber consumer processes tasks asynchronously and sends results via HTTP callback to `/api/transcribe/callback`. See [docs/redis-queue.md](docs/redis-queue.md) for full details.
 
 ## API Endpoints
 
@@ -273,7 +264,6 @@ Queue structure:
 |------|---------|
 | 3000 | Next.js |
 | 5432 | PostgreSQL |
-| 5672 | RabbitMQ AMQP |
 | 6379 | Redis |
 | 7880 | LiveKit HTTP/WebSocket |
 | 7881 | LiveKit RTC (TCP) |
@@ -281,7 +271,6 @@ Queue structure:
 | 8001 | Transcriber (health check) |
 | 9000 | MinIO API |
 | 9001 | MinIO Console |
-| 15672 | RabbitMQ Management UI |
 
 ## Known Issues
 
@@ -302,12 +291,12 @@ const room = new Room({
 
 **Detailed documentation:** [docs/TRANSCRIBER.md](docs/TRANSCRIBER.md)
 
-**Technologies:** Python + faster-whisper + ffmpeg + aio-pika (RabbitMQ)
+**Technologies:** Python + faster-whisper + ffmpeg + redis (Redis Streams)
 **Model:** Whisper large-v3-turbo (INT8, ~1.5GB)
 **Format:** Accepts any audio format (converts to WAV 16kHz mono)
 
 ### Key Features
-- Async processing via RabbitMQ consumer
+- Async processing via Redis Streams consumer
 - Runs on CPU (including Apple Silicon)
 - Performance ~10-15x realtime
 - Sentence splitting by punctuation
@@ -319,14 +308,15 @@ const room = new Room({
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | `{"status": "healthy", "model_loaded": true, "rabbitmq_connected": true}` |
+| `/health` | GET | `{"status": "healthy", "model_loaded": true, "redis_connected": true}` |
 
 ### Health Check
 ```bash
 curl http://localhost:8001/health
 
 # Check task queue
-docker exec tinkervoid-rabbitmq rabbitmqctl list_queues name messages
+docker exec tinkervoid-redis redis-cli XLEN transcription:tasks
+docker exec tinkervoid-redis redis-cli XPENDING transcription:tasks transcribers
 ```
 
 ## Deepgram API (Alternative Transcription)

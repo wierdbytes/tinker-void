@@ -1,4 +1,4 @@
-"""RabbitMQ consumer for transcription tasks."""
+"""Redis Streams consumer for transcription tasks."""
 
 import asyncio
 import logging
@@ -11,10 +11,10 @@ import httpx
 
 from app.config import get_settings
 from app.services.audio import convert_to_wav
-from app.services.rabbitmq import (
+from app.services.redis_stream import (
     MAX_RETRIES,
-    RabbitMQService,
-    get_rabbitmq_service,
+    RedisStreamService,
+    get_redis_stream_service,
 )
 from app.services.storage import StorageService
 from app.services.transcriber import TranscriberService
@@ -31,31 +31,36 @@ PERMANENT_ERRORS = (
 
 
 class TranscriptionConsumer:
-    """Consumer for processing transcription tasks from RabbitMQ."""
+    """Consumer for processing transcription tasks from Redis Streams."""
 
     def __init__(
         self,
         transcriber: TranscriberService,
         storage: StorageService,
-        rabbitmq: RabbitMQService,
+        queue: RedisStreamService,
     ):
         self.transcriber = transcriber
         self.storage = storage
-        self.rabbitmq = rabbitmq
+        self.queue = queue
         self.settings = get_settings()
         self._running = False
 
     async def start(self) -> None:
         """Start consuming tasks."""
         self._running = True
-        await self.rabbitmq.consume(self._process_task)
+        await self.queue.consume(self._process_task)
 
     async def stop(self) -> None:
         """Stop consuming tasks."""
         self._running = False
 
     async def _process_task(self, task: dict) -> None:
-        """Process a single transcription task."""
+        """Process a single transcription task.
+
+        On success: returns normally → _handle_message ACKs and keeps lock.
+        On failure: publishes to retry/dlq, then re-raises →
+                    _handle_message ACKs and deletes lock.
+        """
         task_id = task.get("task_id", "unknown")
         recording_id = task.get("recording_id", "unknown")
         file_url = task.get("file_url", "")
@@ -113,7 +118,7 @@ class TranscriptionConsumer:
 
             if is_permanent or retry_count >= MAX_RETRIES:
                 # Send to DLQ
-                await self.rabbitmq.publish_to_dlq(task, error_str)
+                await self.queue.publish_to_dlq(task, error_str)
 
                 # Send failure callback
                 if callback_url:
@@ -130,17 +135,20 @@ class TranscriptionConsumer:
             else:
                 # Retry
                 task["retry_count"] = retry_count + 1
-                await self.rabbitmq.publish_to_retry(task)
+                await self.queue.publish_to_retry(task)
                 logger.info(
                     f"[TASK_RETRY] task_id={task_id} "
                     f"retry={retry_count + 1}/{MAX_RETRIES}"
                 )
 
+            # Re-raise so _handle_message knows to release the lock
+            raise
+
     async def _transcribe_file(self, file_url: str) -> dict:
         """Download and transcribe a file.
 
         Uses async transcription to avoid blocking the event loop,
-        which is critical for maintaining RabbitMQ heartbeats and HTTP health checks.
+        which is critical for maintaining Redis heartbeats and HTTP health checks.
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -154,7 +162,7 @@ class TranscriptionConsumer:
 
             try:
                 # Transcribe (async - runs in thread pool executor)
-                # This is the key fix: CPU-bound work doesn't block event loop
+                # CPU-bound work doesn't block event loop
                 result = await self.transcriber.transcribe_async(
                     str(wav_file),
                     language=self.settings.default_language,
@@ -188,13 +196,9 @@ async def start_consumer(
 
     settings = get_settings()
 
-    # Connect with configured heartbeat to handle long transcriptions
-    rabbitmq = await get_rabbitmq_service(
-        settings.rabbitmq_url,
-        heartbeat=settings.rabbitmq_heartbeat,
-    )
+    queue = await get_redis_stream_service(settings.redis_url)
 
-    _consumer = TranscriptionConsumer(transcriber, storage, rabbitmq)
+    _consumer = TranscriptionConsumer(transcriber, storage, queue)
 
     # Start consuming in background
     asyncio.create_task(_consumer.start())

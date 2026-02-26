@@ -146,7 +146,7 @@ class TranscriberService:
         """Async wrapper for transcribe - runs in thread pool to avoid blocking event loop.
 
         This is critical for long audio files where transcription can take minutes.
-        Running in executor allows RabbitMQ heartbeats and HTTP health checks to continue.
+        Running in executor allows Redis heartbeats and HTTP health checks to continue.
         """
         loop = asyncio.get_running_loop()
         executor = get_transcription_executor()

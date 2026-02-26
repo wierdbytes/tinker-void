@@ -19,9 +19,6 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379"
 
-    # RabbitMQ
-    rabbitmq_url: str = "amqp://tinkervoid:tinkervoid_secret@rabbitmq:5672/"
-    rabbitmq_heartbeat: int = 300  # 5 minutes - allows long transcriptions without disconnect
     callback_base_url: str = "http://app:3000"
     callback_timeout: int = 30
 

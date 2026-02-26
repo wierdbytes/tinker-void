@@ -41,7 +41,7 @@ interface TranscriptionResult {
 }
 
 /**
- * Callback endpoint for transcription results from RabbitMQ consumer.
+ * Callback endpoint for transcription results from transcriber consumer.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -68,10 +68,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Recording not found' }, { status: 404 })
     }
 
+    // Idempotency check: skip if already transcribed (prevents duplicate utterances)
+    if (status === 'completed' && recording.transcribed) {
+      console.log(`[Callback] Recording ${recording_id} already transcribed, skipping`)
+      return NextResponse.json({ success: true, status: 'already_transcribed' })
+    }
+
     if (status === 'failed') {
       console.error(`[Callback] Transcription failed for ${recording_id}: ${error}`)
       // Mark recording as processed but failed (we don't retry from here)
-      // The DLQ in RabbitMQ handles retry tracking
+      // The DLQ in Redis handles retry tracking
       return NextResponse.json({ success: true, status: 'failed' })
     }
 

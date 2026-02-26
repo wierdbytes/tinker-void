@@ -32,7 +32,7 @@ class HealthResponse(BaseModel):
 
     status: str
     model_loaded: bool
-    rabbitmq_connected: bool = False
+    redis_connected: bool = False
 
 
 class BatchResponse(BaseModel):
