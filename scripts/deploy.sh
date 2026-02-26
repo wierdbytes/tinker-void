@@ -399,12 +399,17 @@ show_status() {
         if docker_compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
             echo "  Status: Running"
             local stream_len=$(docker_compose exec -T redis redis-cli XLEN transcription:tasks 2>/dev/null || echo "0")
+            # lag = messages not yet delivered to consumer group (queued)
+            local lag=$(docker_compose exec -T redis redis-cli XINFO GROUPS transcription:tasks 2>/dev/null | grep -A1 "lag" | tail -1 | tr -d '[:space:]')
+            [[ "$lag" =~ ^[0-9]+$ ]] || lag="0"
+            # pending = delivered but not ACKed (currently processing)
             local pending_raw=$(docker_compose exec -T redis redis-cli XPENDING transcription:tasks transcribers 2>/dev/null || echo "")
             local pending_count=$(echo "$pending_raw" | head -1 | tr -d '[:space:]')
             [[ "$pending_count" =~ ^[0-9]+$ ]] || pending_count="0"
             local retry_count=$(docker_compose exec -T redis redis-cli ZCARD transcription:retry 2>/dev/null || echo "0")
             local dlq_len=$(docker_compose exec -T redis redis-cli XLEN transcription:dlq 2>/dev/null || echo "0")
             echo "  Stream (total):  $stream_len"
+            echo "  Queued:          $lag"
             echo "  In progress:     $pending_count"
             echo "  Retry (waiting): $retry_count"
             echo "  DLQ (failed):    $dlq_len"
