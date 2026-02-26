@@ -288,6 +288,7 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
   const [activeTab, setActiveTab] = useState('overview')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleteConfirmMeeting, setDeleteConfirmMeeting] = useState<string | null>(null)
+  const [retranscribeConfirm, setRetranscribeConfirm] = useState<string | null>(null)
 
   // Navigation state
   const [currentView, setCurrentView] = useState<ViewType>('main')
@@ -373,6 +374,25 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
     }
   }
 
+  const retranscribeMeeting = async (meetingId: string) => {
+    try {
+      const res = await fetch('/api/void/meetings/retranscribe', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ id: meetingId }),
+      })
+      if (res.ok) {
+        setMeetings(meetings.map(m =>
+          m.id === meetingId ? { ...m, status: 'PROCESSING' as const } : m
+        ))
+        setRetranscribeConfirm(null)
+        fetchStats()
+      }
+    } catch (e) {
+      console.error('Failed to retranscribe meeting:', e)
+    }
+  }
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
   }
@@ -417,6 +437,9 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
           onDelete={deleteMeeting}
           deleteConfirm={deleteConfirmMeeting}
           setDeleteConfirm={setDeleteConfirmMeeting}
+          onRetranscribe={retranscribeMeeting}
+          retranscribeConfirm={retranscribeConfirm}
+          setRetranscribeConfirm={setRetranscribeConfirm}
         />
       </SubPageLayout>
     )
@@ -437,6 +460,9 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
           onDelete={deleteMeeting}
           deleteConfirm={deleteConfirmMeeting}
           setDeleteConfirm={setDeleteConfirmMeeting}
+          onRetranscribe={retranscribeMeeting}
+          retranscribeConfirm={retranscribeConfirm}
+          setRetranscribeConfirm={setRetranscribeConfirm}
         />
       </SubPageLayout>
     )
@@ -708,12 +734,18 @@ function MeetingsList({
   onDelete,
   deleteConfirm,
   setDeleteConfirm,
+  onRetranscribe,
+  retranscribeConfirm,
+  setRetranscribeConfirm,
 }: {
   meetings: Meeting[]
   showRoomName: boolean
   onDelete: (id: string) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
+  onRetranscribe: (id: string) => void
+  retranscribeConfirm: string | null
+  setRetranscribeConfirm: (id: string | null) => void
 }) {
   if (meetings.length === 0) {
     return (
@@ -790,6 +822,38 @@ function MeetingsList({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {(meeting.status === 'COMPLETED' || meeting.status === 'FAILED') && (
+                  retranscribeConfirm === meeting.id ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => onRetranscribe(meeting.id)}
+                      >
+                        Повторить
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setRetranscribeConfirm(null)}
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      onClick={() => setRetranscribeConfirm(meeting.id)}
+                      title="Повторить транскрипцию"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </Button>
+                  )
+                )}
                 {deleteConfirm === meeting.id ? (
                   <div className="flex items-center gap-1">
                     <Button
