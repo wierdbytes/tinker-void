@@ -7,17 +7,17 @@ export async function POST(request: NextRequest) {
   if (!auth.valid) return auth.error!
 
   try {
-    const { roomName } = await request.json()
+    const { roomId } = await request.json()
 
-    if (!roomName || typeof roomName !== 'string') {
+    if (!roomId || typeof roomId !== 'string') {
       return NextResponse.json(
-        { error: 'Room name is required' },
+        { error: 'Room ID is required' },
         { status: 400 }
       )
     }
 
     const roomService = getRoomServiceClient()
-    await roomService.deleteRoom(roomName)
+    await roomService.deleteRoom(roomId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

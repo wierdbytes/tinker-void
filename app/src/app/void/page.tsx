@@ -395,12 +395,12 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
     }
   }
 
-  const closeRoom = async (meetingId: string, roomName: string) => {
+  const closeRoom = async (meetingId: string, roomId: string) => {
     try {
       const res = await fetch('/api/void/meetings/close-room', {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ roomName }),
+        body: JSON.stringify({ roomId }),
       })
       if (res.ok) {
         setCloseRoomConfirm(null)
@@ -774,7 +774,7 @@ function MeetingsList({
   onRetranscribe: (id: string) => void
   retranscribeConfirm: string | null
   setRetranscribeConfirm: (id: string | null) => void
-  onCloseRoom: (meetingId: string, roomName: string) => void
+  onCloseRoom: (meetingId: string, roomId: string) => void
   closeRoomConfirm: string | null
   setCloseRoomConfirm: (id: string | null) => void
 }) {
@@ -860,7 +860,7 @@ function MeetingsList({
                         variant="destructive"
                         size="sm"
                         className="h-8 text-xs"
-                        onClick={() => onCloseRoom(meeting.id, meeting.roomName)}
+                        onClick={() => onCloseRoom(meeting.id, meeting.roomId)}
                       >
                         Завершить
                       </Button>
