@@ -26,6 +26,7 @@ import {
   LogOut,
   ChevronLeft,
   ArrowUpRight,
+  PhoneOff,
 } from 'lucide-react'
 
 // Types
@@ -289,6 +290,7 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleteConfirmMeeting, setDeleteConfirmMeeting] = useState<string | null>(null)
   const [retranscribeConfirm, setRetranscribeConfirm] = useState<string | null>(null)
+  const [closeRoomConfirm, setCloseRoomConfirm] = useState<string | null>(null)
 
   // Navigation state
   const [currentView, setCurrentView] = useState<ViewType>('main')
@@ -393,6 +395,23 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
     }
   }
 
+  const closeRoom = async (meetingId: string, roomName: string) => {
+    try {
+      const res = await fetch('/api/void/meetings/close-room', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ roomName }),
+      })
+      if (res.ok) {
+        setCloseRoomConfirm(null)
+        // Refresh after a short delay to let webhooks process
+        setTimeout(refreshAll, 2000)
+      }
+    } catch (e) {
+      console.error('Failed to close room:', e)
+    }
+  }
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
   }
@@ -440,6 +459,9 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
           onRetranscribe={retranscribeMeeting}
           retranscribeConfirm={retranscribeConfirm}
           setRetranscribeConfirm={setRetranscribeConfirm}
+          onCloseRoom={closeRoom}
+          closeRoomConfirm={closeRoomConfirm}
+          setCloseRoomConfirm={setCloseRoomConfirm}
         />
       </SubPageLayout>
     )
@@ -463,6 +485,9 @@ function AdminPanel({ adminKey, onLogout }: { adminKey: string; onLogout: () => 
           onRetranscribe={retranscribeMeeting}
           retranscribeConfirm={retranscribeConfirm}
           setRetranscribeConfirm={setRetranscribeConfirm}
+          onCloseRoom={closeRoom}
+          closeRoomConfirm={closeRoomConfirm}
+          setCloseRoomConfirm={setCloseRoomConfirm}
         />
       </SubPageLayout>
     )
@@ -737,6 +762,9 @@ function MeetingsList({
   onRetranscribe,
   retranscribeConfirm,
   setRetranscribeConfirm,
+  onCloseRoom,
+  closeRoomConfirm,
+  setCloseRoomConfirm,
 }: {
   meetings: Meeting[]
   showRoomName: boolean
@@ -746,6 +774,9 @@ function MeetingsList({
   onRetranscribe: (id: string) => void
   retranscribeConfirm: string | null
   setRetranscribeConfirm: (id: string | null) => void
+  onCloseRoom: (meetingId: string, roomName: string) => void
+  closeRoomConfirm: string | null
+  setCloseRoomConfirm: (id: string | null) => void
 }) {
   if (meetings.length === 0) {
     return (
@@ -822,6 +853,38 @@ function MeetingsList({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {meeting.status === 'IN_PROGRESS' && (
+                  closeRoomConfirm === meeting.id ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => onCloseRoom(meeting.id, meeting.roomName)}
+                      >
+                        Завершить
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setCloseRoomConfirm(null)}
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                      onClick={() => setCloseRoomConfirm(meeting.id)}
+                      title="Завершить встречу"
+                    >
+                      <PhoneOff className="w-4 h-4" />
+                    </Button>
+                  )
+                )}
                 {(meeting.status === 'COMPLETED' || meeting.status === 'FAILED') && (
                   retranscribeConfirm === meeting.id ? (
                     <div className="flex items-center gap-1">
